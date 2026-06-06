@@ -4,43 +4,85 @@
 
 代码智能体 —— 能自主搜索、理解、修改代码。
 
-先行插件，后起独立应用。
+---
+
+## 当前状态
+
+VSCode 插件形态，早期开发阶段。还没上市场，需要本地跑。
 
 ---
 
-## 做什么
-
-在 VSCode 里跟 Agent 对话，它自己搜索代码、定位问题、改文件、跑测试验证，你只管 Accept/Reject。
-
-- 混合检索（BM25 + 向量 + AST 符号图）
-- 自主 Agent Loop（规划 → 执行 → 验证）
-- 本地索引，代码不上传
-- 所有修改走 Diff Review
-
----
-
-## 开始
+## 开发环境
 
 ```bash
-# VSCode 里装插件
-Cmd+Shift+P → Cangjie: Open Chat
+# 环境要求
+Node.js >= 22
+pnpm >= 9
 
-# 以后也有 CLI
-cj "把 auth.ts 的登录 Bug 修了，写测试验证"
+# 装依赖
+pnpm install
+
+# 构建
+pnpm tsc -b packages/shared packages/agent-runtime packages/vscode-extension
+# 或者 VSCode 里 Cmd+Shift+B（配好了 build task）
+
+# 调试
+# F5 → 选 "Run Cangjie Extension" → 新窗口里 Cmd+Shift+P → Cangjie: Open Chat
+
+# 设 API Key（否则 Agent 跑不起来）
+export ANTHROPIC_API_KEY=sk-ant-...
+# 或者在打开的调试窗口里 Cmd+, → 搜 cangjie.llm.apiKey
+```
+
+---
+
+## 能干什么
+
+打开 Chat 面板，用自然语言下指令。Agent 自己搜索代码、定位、改文件、验证。
+
+```
+"auth.ts 的 token 刷新逻辑有个 Bug，修一下"
+"这个项目认证模块怎么设计的，讲清楚"
+"给登录接口加个验证码校验"
+"重构 user.ts，把这几个函数拆到单独文件"
+```
+
+实际效果取决于你配的模型。Agent 会自己调工具（读文件、搜索、编辑、跑命令）。
+
+---
+
+## 怎么工作的
+
+```
+你发指令 → Agent 规划步骤 → 搜代码 → 读文件 → 改代码 → 验证 → Diff Review
+```
+
+工具：`read_file` `grep` `write_file` `edit_file` `bash`
+
+---
+
+## 配置
+
+```json
+// VSCode settings.json
+{
+  "cangjie.llm.provider": "anthropic",
+  "cangjie.llm.model": "claude-sonnet-4-6",
+  "cangjie.autoAllowReadOnly": true
+}
 ```
 
 ---
 
 ## 技术栈
 
-纯 TypeScript。
+纯 TypeScript。[设计文档](docs/cangjie-design.md)
 
 | 层 | 选型 |
 |----|------|
 | 桌面 | VSCode Extension → 独立 App |
 | Agent | TypeScript (Node.js 22+) |
 | UI | React + Tailwind |
-| 搜索 | ripgrep + tree-sitter WASM + LanceDB |
 | LLM | Anthropic / OpenAI / Gemini |
 
 ---
