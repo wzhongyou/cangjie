@@ -1,0 +1,19 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build-cangjie",
+      "type": "shell",
+      "command": "${workspaceFolder}/node_modules/.bin/tsc",
+      "args": ["-b", "packages/shared", "packages/agent-runtime", "packages/vscode-extension"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "silent"
+      },
+      "problemMatcher": "$tsc"
+    }
+  ]
+}
