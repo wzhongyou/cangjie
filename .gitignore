@@ -30,3 +30,36 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test & coverage
+*.test
+*.out
+coverage.html
+
+# Go build cache
+/vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config / secrets
+*.env
+.env.*
+config.local.*
+config/llmgate.toml
+supervisor
