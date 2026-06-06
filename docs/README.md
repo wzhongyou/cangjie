@@ -26,7 +26,7 @@ Cangjie（仓颉）是一个统一的 AI Agent 平台，全 Go 实现（前端 T
 | [权限系统](subsystems/permission.md) | 分级权限（allow/deny/ask）、策略引擎、审计日志、HCL 配置 |
 | [插件系统](subsystems/plugin.md) | 多形态插件（Go/WASM/子进程）、Wazero 沙箱、插件市场 |
 | [多渠道网关](subsystems/gateway.md) | Telegram/Discord/Slack/WhatsApp/微信适配器、消息路由 |
-| [调度系统](subsystems/scheduler.md) | Cron 定时任务、一次性任务、重试机制、多渠道通知 |
+| [AGUI 交互界面](subsystems/agui.md) | Web 聊天界面（React + SSE 流式），多端交互入口
 
 ## 快速链接
 
@@ -49,11 +49,11 @@ Cangjie（仓颉）是一个统一的 AI Agent 平台，全 Go 实现（前端 T
 | 沙箱 | Seatbelt / Bubblewrap / seccomp | OS 原生安全隔离 |
 | 浏览器 | Playwright | 浏览器自动化 |
 | 插件运行时 | Wazero / JSON-RPC | WASM + 子进程插件 |
-| Web 框架 | Vite + React | 前端构建与 UI |
-| API 协议 | REST + WebSocket + gRPC | 多协议服务 |
+| 前端框架 | Vite + React + Tailwind | AGUI 交互界面 |
+| API 协议 | HTTP + SSE | REST + 流式响应 |
 
 ## 版本
 
-当前版本: `v0.1.0` (MVP 核心库)
+当前版本: `v0.3.0` (AGUI + SSE 流式对话 + SQLite)
 
 目标版本: `v1.0.0` (全渠道、全平台 Agent 产品)

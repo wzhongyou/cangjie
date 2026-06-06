@@ -63,3 +63,10 @@ Thumbs.db
 config.local.*
 config/llmgate.toml
 supervisor
+
+# Web frontend
+web/node_modules/
+web/dist/
+
+# Data
+data/
