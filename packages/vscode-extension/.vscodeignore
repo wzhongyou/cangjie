@@ -1,0 +1,8 @@
+# VSCode Extension 发布时排除的文件
+.vscode/**
+.git/**
+node_modules/**
+src/**
+tsconfig.json
+.gitignore
+*.vsix

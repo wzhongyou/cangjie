@@ -1,0 +1,21 @@
+{
+  "name": "cangjie",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Cangjie — VSCode 代码智能体",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm -r dev",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "clean": "pnpm -r clean"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "typescript": "^6.0.3"
+  }
+}
