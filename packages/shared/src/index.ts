@@ -34,7 +34,7 @@ export type AgentEvent =
 // ============================================================
 
 export interface LlmConfig {
-  provider: 'anthropic' | 'openai' | 'gemini' | 'local';
+  provider: string;
   apiKey: string;
   model: string;
   maxTokens: number;

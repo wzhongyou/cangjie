@@ -34,7 +34,7 @@ importers:
         specifier: ^7.6.0
         version: 7.6.13
       vitest:
-        specifier: ^2.0.0
+        specifier: ^2.1.9
         version: 2.1.9(@types/node@25.9.1)
 
   packages/shared:

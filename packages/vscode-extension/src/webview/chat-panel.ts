@@ -1,33 +1,37 @@
 /**
- * Chat Webview Panel 管理
+ * Chat Webview Panel
  *
- * 设计要点：
- * 1. VSCode Webview 本质是一个 iframe，通过 postMessage 通信
- * 2. Extension Host ↔ Webview 的桥梁在这个文件
- * 3. Webview 内是 React SPA，通过 Vite 构建
+ * Extension Host 侧的 Chat 面板管理。
+ * 负责 Webview ↔ AgentService 之间的消息转发和事件流推送。
  */
 
 import * as vscode from 'vscode';
+import { AgentService } from '../services/agent-service.js';
+import type { AgentEvent } from '@cangjie/shared';
 
 export class ChatPanel {
   public static currentPanel: ChatPanel | undefined;
   private readonly panel: vscode.WebviewPanel;
+  private readonly agentService: AgentService;
   private disposables: vscode.Disposable[] = [];
+  private abortController: AbortController | null = null;
 
   private constructor(panel: vscode.WebviewPanel, context: vscode.ExtensionContext) {
     this.panel = panel;
-    this.panel.webview.html = this.getHtml(panel.webview, context);
+    this.agentService = new AgentService();
+
+    this.panel.webview.html = this.getHtml(panel.webview);
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
 
-    // 接收来自 Webview 的消息
+    // Webview → Extension Host
     this.panel.webview.onDidReceiveMessage(
-      async (msg) => {
+      (msg) => {
         switch (msg.type) {
           case 'sendMessage':
-            await this.handleUserMessage(msg.content);
+            this.handleUserMessage(msg.content);
             break;
-          case 'getContext':
-            await this.sendEditorContext();
+          case 'abort':
+            this.abortAgent();
             break;
         }
       },
@@ -36,133 +40,200 @@ export class ChatPanel {
     );
   }
 
-  /** 创建或显示 Chat 面板 */
   static createOrShow(context: vscode.ExtensionContext): ChatPanel {
     const column = vscode.ViewColumn.Two;
-
     if (ChatPanel.currentPanel) {
       ChatPanel.currentPanel.panel.reveal(column);
       return ChatPanel.currentPanel;
     }
 
-    const panel = vscode.window.createWebviewPanel(
-      'cangjieChat',
-      'Cangjie',
-      column,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview')],
-      },
-    );
+    const panel = vscode.window.createWebviewPanel('cangjieChat', 'Cangjie', column, {
+      enableScripts: true,
+      retainContextWhenHidden: true,
+    });
 
     ChatPanel.currentPanel = new ChatPanel(panel, context);
     return ChatPanel.currentPanel;
   }
 
-  /** 发送消息到 Chat（从外部调用，如 explainCode 命令） */
+  /** 从外部命令触发（如 explainCode） */
   sendMessage(content: string) {
     this.panel.webview.postMessage({ type: 'userMessage', content });
   }
 
-  /** 处理用户发送的消息 */
+  /** 处理用户输入 → 启动 Agent */
   private async handleUserMessage(content: string) {
-    // 获取编辑器上下文
-    const editor = vscode.window.activeTextEditor;
-    const context = editor
-      ? `当前文件: ${editor.document.uri.fsPath}\n语言: ${editor.document.languageId}\n选择范围: ${editor.selection.start.line}:${editor.selection.start.character}-${editor.selection.end.line}:${editor.selection.end.character}`
-      : '';
+    // 取消上一个请求
+    this.abortAgent();
+    this.abortController = new AbortController();
 
-    // TODO: 调用 Agent Runtime
-    this.panel.webview.postMessage({
-      type: 'assistantMessage',
-      content: `收到你的消息: "${content}"\n\n${context}\n\n> Agent Runtime 集成中, 目前为 Demo 模式...`,
-    });
+    this.postToWebview({ type: 'agentStart' });
+
+    try {
+      for await (const event of this.agentService.run(content, this.abortController.signal)) {
+        this.postAgentEvent(event);
+      }
+    } catch (err: any) {
+      this.postToWebview({ type: 'agentError', error: err.message ?? String(err) });
+    }
+
+    this.postToWebview({ type: 'agentEnd' });
   }
 
-  /** 发送当前编辑器上下文到 Webview */
-  private async sendEditorContext() {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) return;
-
-    this.panel.webview.postMessage({
-      type: 'editorContext',
-      filePath: editor.document.uri.fsPath,
-      language: editor.document.languageId,
-      selection: editor.document.getText(editor.selection),
-    });
+  /** 将 AgentEvent 转为 Webview 消息 */
+  private postAgentEvent(event: AgentEvent) {
+    switch (event.type) {
+      case 'thinking':
+        this.postToWebview({ type: 'agentThinking', content: event.content });
+        break;
+      case 'tool_call':
+        this.postToWebview({ type: 'agentToolCall', tool: event.tool, args: event.args });
+        break;
+      case 'tool_result':
+        this.postToWebview({ type: 'agentToolResult', tool: event.tool, result: event.result, duration: event.duration });
+        break;
+      case 'response':
+        this.postToWebview({ type: 'agentResponse', content: event.content });
+        break;
+      case 'error':
+        this.postToWebview({ type: 'agentError', error: event.error });
+        break;
+      case 'done':
+        this.postToWebview({ type: 'agentDone', steps: event.steps });
+        break;
+    }
   }
 
-  private getHtml(webview: vscode.Webview, _context: vscode.ExtensionContext): string {
-    // MVP 阶段内联 HTML，后续改为 Vite 构建产物
+  private abortAgent() {
+    this.abortController?.abort();
+    this.abortController = null;
+  }
+
+  private postToWebview(msg: Record<string, unknown>) {
+    this.panel.webview.postMessage(msg);
+  }
+
+  /** 内联 HTML + JS（后续替换为 React） */
+  private getHtml(webview: vscode.Webview): string {
+    const csp = webview.cspSource;
     return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource} 'unsafe-inline';">
-  <title>Cangjie</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src ${csp} 'unsafe-inline';">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, system-ui, sans-serif; color: var(--vscode-foreground); background: var(--vscode-sideBar-background); padding: 16px; font-size: 14px; }
-    #chat { display: flex; flex-direction: column; height: 100vh; }
-    #messages { flex: 1; overflow-y: auto; margin-bottom: 12px; }
-    .msg { margin-bottom: 12px; padding: 8px 12px; border-radius: 8px; max-width: 85%; }
-    .msg.user { background: var(--vscode-button-background); color: var(--vscode-button-foreground); align-self: flex-end; }
-    .msg.assistant { background: var(--vscode-editor-background); border: 1px solid var(--vscode-panel-border); }
-    #input-area { display: flex; gap: 8px; }
-    #input { flex: 1; padding: 10px; border: 1px solid var(--vscode-input-border); border-radius: 8px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); font-family: inherit; font-size: 14px; resize: none; }
-    #send { padding: 10px 20px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 8px; cursor: pointer; }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,system-ui,sans-serif;font-size:13px;color:var(--vscode-foreground);background:var(--vscode-sideBar-background);padding:12px}
+    #chat{display:flex;flex-direction:column;height:100vh}
+    #messages{flex:1;overflow-y:auto;padding-bottom:8px}
+    .msg{margin-bottom:10px;padding:8px 12px;border-radius:6px;max-width:90%;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+    .msg.user{align-self:flex-end;background:var(--vscode-button-background);color:var(--vscode-button-foreground)}
+    .msg.assistant{align-self:flex-start;background:var(--vscode-editor-background);border:1px solid var(--vscode-panel-border)}
+    .msg.tool_call{align-self:flex-start;background:var(--vscode-textBlockQuote-background);border-left:3px solid var(--vscode-textLink-activeForeground);font-size:12px}
+    .msg.tool_result{align-self:flex-start;background:var(--vscode-textCodeBlock-background);font-family:monospace;font-size:11px;max-height:200px;overflow-y:auto}
+    .msg.error{align-self:flex-start;background:var(--vscode-inputValidation-errorBackground);color:var(--vscode-inputValidation-errorForeground);border:1px solid var(--vscode-inputValidation-errorBorder)}
+    .msg.system{align-self:center;color:var(--vscode-descriptionForeground);font-size:11px;background:none;padding:2px 0}
+    #input-area{display:flex;gap:8px;padding-top:8px;border-top:1px solid var(--vscode-panel-border)}
+    #input{flex:1;padding:10px;border:1px solid var(--vscode-input-border);border-radius:6px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);font-family:inherit;font-size:13px;resize:none;min-height:60px}
+    #input:focus{outline:1px solid var(--vscode-focusBorder)}
+    #send{padding:8px 16px;background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:none;border-radius:6px;cursor:pointer;font-size:13px;align-self:flex-end}
+    #send:hover{background:var(--vscode-button-hoverBackground)}
+    #send:disabled{opacity:.5}
+    .thinking{display:inline-block;width:8px;height:8px;background:var(--vscode-textLink-foreground);border-radius:50%;animation:pulse .8s infinite}
+    @keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
   </style>
 </head>
 <body>
-  <div id="chat">
-    <div id="messages">
-      <div class="msg assistant">你好，我是 Cangjie。有什么可以帮你？</div>
-    </div>
-    <div id="input-area">
-      <textarea id="input" rows="3" placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"></textarea>
-      <button id="send">发送</button>
-    </div>
+<div id="chat">
+  <div id="messages"></div>
+  <div id="input-area">
+    <textarea id="input" rows="2" placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"></textarea>
+    <button id="send">发送</button>
   </div>
+</div>
 
-  <script>
-    const vscode = acquireVsCodeApi();
-    const messagesEl = document.getElementById('messages');
-    const inputEl = document.getElementById('input');
-    const sendBtn = document.getElementById('send');
+<script>
+const vscode = acquireVsCodeApi();
+const messagesEl = document.getElementById('messages');
+const inputEl = document.getElementById('input');
+const sendBtn = document.getElementById('send');
+let isRunning = false;
 
-    function addMessage(content, role) {
-      const div = document.createElement('div');
-      div.className = 'msg ' + role;
-      div.textContent = content;
-      messagesEl.appendChild(div);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-    }
+function addMsg(content, cls) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  d.textContent = content;
+  messagesEl.appendChild(d);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return d;
+}
 
-    function send() {
-      const text = inputEl.value.trim();
-      if (!text) return;
-      addMessage(text, 'user');
-      vscode.postMessage({ type: 'sendMessage', content: text });
-      inputEl.value = '';
-    }
+function addSystem(text) {
+  addMsg(text, 'system');
+}
 
-    sendBtn.addEventListener('click', send);
-    inputEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
-    });
+function send() {
+  const text = inputEl.value.trim();
+  if (!text || isRunning) return;
+  addMsg(text, 'user');
+  vscode.postMessage({ type: 'sendMessage', content: text });
+  inputEl.value = '';
+  isRunning = true;
+  sendBtn.disabled = true;
+  sendBtn.textContent = '...';
+}
 
-    window.addEventListener('message', (e) => {
-      const msg = e.data;
-      if (msg.type === 'assistantMessage') addMessage(msg.content, 'assistant');
-    });
-  </script>
+sendBtn.addEventListener('click', send);
+inputEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+window.addEventListener('message', e => {
+  const m = e.data;
+  switch (m.type) {
+    case 'userMessage':
+      addMsg(m.content, 'user');
+      vscode.postMessage({ type: 'sendMessage', content: m.content });
+      break;
+    case 'agentStart':
+      addSystem('Agent 启动中...');
+      break;
+    case 'agentThinking':
+      addMsg(m.content || '思考中...', 'assistant');
+      break;
+    case 'agentToolCall':
+      addMsg('🔧 ' + m.tool + ' ' + JSON.stringify(m.args).slice(0, 200), 'tool_call');
+      break;
+    case 'agentToolResult':
+      addMsg((m.result || '').slice(0, 800), 'tool_result');
+      break;
+    case 'agentResponse':
+      addMsg(m.content, 'assistant');
+      break;
+    case 'agentError':
+      addMsg('✗ ' + m.error, 'error');
+      break;
+    case 'agentDone':
+      addSystem('✓ 完成 (' + m.steps + ' 步)');
+      isRunning = false;
+      sendBtn.disabled = false;
+      sendBtn.textContent = '发送';
+      break;
+    case 'agentEnd':
+      break;
+    case 'editResult':
+      addSystem(m.success ? '✓ 修改已应用' : '✗ 修改失败: ' + (m.error || ''));
+      break;
+  }
+});
+</script>
 </body>
 </html>`;
   }
 
   private dispose() {
+    this.abortAgent();
+    this.agentService.dispose();
     ChatPanel.currentPanel = undefined;
     this.panel.dispose();
     for (const d of this.disposables) d.dispose();

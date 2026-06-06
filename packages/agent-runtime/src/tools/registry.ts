@@ -1,11 +1,17 @@
-/**
- * 工具注册中心 — 管理 Agent 可用的所有工具
- */
-
 import type { Tool, ToolDefinition } from '@cangjie/shared';
+import {
+  readFileTool, grepTool, writeFileTool, editFileTool, bashTool,
+} from './builtin/index.js';
 
 export class ToolRegistry {
   private tools = new Map<string, Tool>();
+
+  constructor() {
+    // 注册内置工具
+    for (const t of [readFileTool, grepTool, writeFileTool, editFileTool, bashTool]) {
+      this.register(t);
+    }
+  }
 
   register(tool: Tool): void {
     if (this.tools.has(tool.definition.name)) {
@@ -18,19 +24,11 @@ export class ToolRegistry {
     return this.tools.get(name);
   }
 
-  /** 导出给 LLM 的工具定义（JSON Schema） */
-  definitions(): ToolDefinition[] {
-    return Array.from(this.tools.values()).map(t => t.definition);
-  }
-
   list(): string[] {
     return Array.from(this.tools.keys());
   }
 
-  /** 批量注册内置工具 */
-  registerAll(tools: Tool[]): void {
-    for (const tool of tools) {
-      this.register(tool);
-    }
+  definitions(): ToolDefinition[] {
+    return Array.from(this.tools.values()).map(t => t.definition);
   }
 }

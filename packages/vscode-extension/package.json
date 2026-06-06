@@ -3,6 +3,7 @@
   "displayName": "Cangjie - 代码智能体",
   "description": "AI 原生代码智能平台 — VSCode 里的自主代码 Agent",
   "version": "0.1.0",
+  "type": "module",
   "publisher": "cangjie",
   "license": "MIT",
   "icon": "assets/icon.png",

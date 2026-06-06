@@ -33,15 +33,15 @@ cj "把 auth.ts 的登录 Bug 修了，写测试验证"
 
 ## 技术栈
 
-TypeScript 主力，性能卡点走 Rust napi-rs。
+纯 TypeScript。
 
 | 层 | 选型 |
 |----|------|
-| IDE | VSCode Extension + React + Tailwind |
-| Agent Runtime | TypeScript (Node.js 22+) |
-| 代码搜索 | Tantivy BM25 + LanceDB 向量 |
-| 代码解析 | tree-sitter（Rust 桥接） |
-| LLM | Anthropic / OpenAI / Gemini / 本地 |
+| 桌面 | VSCode Extension → 独立 App |
+| Agent | TypeScript (Node.js 22+) |
+| UI | React + Tailwind |
+| 搜索 | ripgrep + tree-sitter WASM + LanceDB |
+| LLM | Anthropic / OpenAI / Gemini |
 
 ---
 
