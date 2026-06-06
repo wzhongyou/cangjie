@@ -21,7 +21,7 @@
 | `agent/mcp_client.go` | MCP stdio 客户端（工具发现+调用） |
 | `agent/llmgate/` | llmgate → agent.LLMModel 适配器 |
 | `agent/agent_test.go` | 33 个单元测试，全覆盖 |
-| `config/` | llmgate.toml.example |
+| `conf/` | llmgate.toml.example |
 | `examples/` | 5 个示例程序 |
 | `go.mod` | 依赖管理（graphflow + llmgate + mcp-go） |
 

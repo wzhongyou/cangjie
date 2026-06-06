@@ -61,7 +61,9 @@ Thumbs.db
 *.env
 .env.*
 config.local.*
-config/llmgate.toml
+conf/llmgate.toml
+/cj
+/agent_demo
 supervisor
 
 # Web frontend

@@ -204,7 +204,7 @@ cangjie/
 │   ├── runner.go                 # 任务执行器
 │   └── store.go                  # 任务持久化
 │
-├── config/                       # 配置系统（增强）
+├── conf/                         # 配置系统（增强）
 │   ├── config.go                 # 配置模型
 │   ├── loader.go                 # 配置加载（TOML/YAML/JSON）
 │   ├── profile.go                # 项目配置（.cangjie.yaml）

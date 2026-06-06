@@ -59,7 +59,7 @@ func main() {
 
 	llm := buildLLM()
 	if llm == nil {
-		log.Fatal("No LLM configured. Set up config/llmgate.toml or use environment variables.")
+		log.Fatal("No LLM configured. Set up conf/llmgate.toml or use environment variables.")
 	}
 	wsRoot, err := filepath.Abs(*workspace)
 	if err != nil {
@@ -86,7 +86,7 @@ func main() {
 func runServer() {
 	llm := buildLLM()
 	if llm == nil {
-		log.Fatal("No LLM configured. Set up config/llmgate.toml.")
+		log.Fatal("No LLM configured. Set up conf/llmgate.toml.")
 	}
 	wsRoot, _ := filepath.Abs(*workspace)
 	tools := buildTools(wsRoot)
@@ -273,10 +273,10 @@ func buildLLM() agent.LLMModel {
 
 func findConfig() string {
 	if *configPath != "" { return *configPath }
-	for _, p := range []string{"config/llmgate.toml", "llmgate.toml", filepath.Join(os.Getenv("HOME"), ".cangjie", "config.toml")} {
+	for _, p := range []string{"conf/llmgate.toml", "llmgate.toml", filepath.Join(os.Getenv("HOME"), ".cangjie", "config.toml")} {
 		if _, err := os.Stat(p); err == nil { return p }
 	}
-	return "config/llmgate.toml"
+	return "conf/llmgate.toml"
 }
 
 // ── Tools ──────────────────────────────────────────────────────────────────────

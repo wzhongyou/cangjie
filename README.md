@@ -147,7 +147,7 @@ cangjie/
 ├── plugin/                # 插件系统（WASM + 子进程）
 ├── gateway/               # 多渠道消息网关
 ├── scheduler/             # 调度系统（Cron + 异步）
-├── config/                # 配置系统
+├── conf/                  # 配置系统
 ├── web/                   # Web Dashboard（TypeScript）
 ├── ide/                   # IDE 插件（VS Code + JetBrains）
 ├── examples/              # 示例

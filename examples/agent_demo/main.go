@@ -1,8 +1,8 @@
 // agent_demo shows how to build a ReAct agent using Cangjie (built on Graphflow).
 //
 //	Mock mode (default):        go run ./examples/agent_demo
-//	From config file:           go run ./examples/agent_demo -config config/llmgate.toml
-//	From config + pin provider: go run ./examples/agent_demo -config config/llmgate.toml -provider deepseek
+//	From config file:           go run ./examples/agent_demo -config conf/llmgate.toml
+//	From config + pin provider: go run ./examples/agent_demo -config conf/llmgate.toml -provider deepseek
 //	From env vars only:         DEEPSEEK_KEY=sk-xxx go run ./examples/agent_demo -env
 //	From env vars + provider:   DEEPSEEK_KEY=sk-xxx go run ./examples/agent_demo -env -provider deepseek
 package main
@@ -73,9 +73,9 @@ func buildLLM() agent.LLMModel {
 		return fromConfig(*configPath)
 	}
 
-	// 2. Auto-detect config/llmgate.toml.
-	if _, err := os.Stat("config/llmgate.toml"); err == nil {
-		return fromConfig("config/llmgate.toml")
+	// 2. Auto-detect conf/llmgate.toml.
+	if _, err := os.Stat("conf/llmgate.toml"); err == nil {
+		return fromConfig("conf/llmgate.toml")
 	}
 	if _, err := os.Stat("llmgate.toml"); err == nil {
 		return fromConfig("llmgate.toml")
@@ -89,7 +89,7 @@ func buildLLM() agent.LLMModel {
 	// 4. Fallback to mock.
 	fmt.Println("Using mock LLM (no config or API keys found).")
 	fmt.Println("   For real models:")
-	fmt.Println("     cp config/llmgate.toml.example config/llmgate.toml    # edit keys, then:")
+	fmt.Println("     cp conf/llmgate.toml.example conf/llmgate.toml    # edit keys, then:")
 	fmt.Println("     go run ./examples/agent_demo")
 	fmt.Println("   Or use env vars:")
 	fmt.Println("     DEEPSEEK_KEY=sk-xxx go run ./examples/agent_demo -env -provider deepseek")
