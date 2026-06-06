@@ -4,48 +4,7 @@
 
 Cangjie 定位为统一 Agent 产品，对标四大主流 AI 编程/助手产品。本文档分析各竞品的核心能力、架构特点和差异化空间。
 
----
-
-## 1. Claude Code（Anthropic）
-
-### 产品形态
-- **终端 CLI 工具**，通过 `claude` 命令交互
-- 同时支持桌面端、Web 端、VS Code/JetBrains IDE 插件
-- 单一二进制分发的 Node.js 应用
-
-### 核心能力
-| 能力 | 描述 |
-|------|------|
-| Agent 循环 | Plan-Execute-Reflect，基于图编排（Graphflow 同源） |
-| 工具系统 | 文件读写、Shell 执行、Git 操作、Web 搜索、图片分析 |
-| MCP 协议 | 原生支持 Model Context Protocol，无限工具扩展 |
-| 沙箱执行 | macOS Seatbelt / Linux Bubblewrap 原生沙箱 |
-| 流式响应 | 逐 Token 实时输出，思考过程可见 |
-| 权限系统 | 分级权限（allow/deny/ask），持久化记忆 |
-| 会话管理 | 会话持久化、恢复、分支、上下文压缩 |
-| 代码理解 | LSP 集成、项目级语义索引 |
-| 多模型 | Claude Opus/Sonnet/Haiku 系列 |
-| Hooks | 生命周期钩子系统（before/after 事件） |
-
-### 架构特点
-```
-CLI/TUI → Agent Loop → Graph Engine → LLM/Tools/MCP
-                ↕
-         Permission Layer
-                ↕
-         Session Manager + Memory
-```
-
-### 可借鉴点
-- 权限系统设计（分级 + 持久化）
-- 会话持久化与恢复机制
-- 沙箱实现方式
-- Hook 系统设计
-- IDE 插件协议
-
----
-
-## 2. OpenAI Codex
+## 1. OpenAI Codex
 
 ### 产品形态
 - **IDE 深度集成**（VS Code 为主，到 JetBrains）
@@ -85,11 +44,11 @@ CLI/TUI → Agent Loop → Graph Engine → LLM/Tools/MCP
 
 ---
 
-## 3. OpenCode
+## 2. OpenCode
 
 ### 产品形态
 - **开源 TUI 编程助手**（Go 实现）
-- 终端内交互，类似 Claude Code 体验
+- 终端内交互，对标主流终端 Agent 体验
 - 社区驱动，插件化架构
 
 ### 核心能力
@@ -120,7 +79,7 @@ TUI (Bubble Tea) → Agent Core → LLM Providers
 
 ---
 
-## 4. OpenClaw
+## 3. OpenClaw
 
 ### 产品形态
 - **个人 AI Agent 平台**（全渠道）
@@ -162,18 +121,18 @@ WhatsApp / Telegram / Slack / ...
 
 ## 差异化定位分析
 
-| 维度 | Codex | Claude Code | OpenCode | OpenClaw | **Cangjie（目标）** |
-|------|-------|-------------|----------|----------|---------------------|
-| 语言栈 | TS/Python | TypeScript | Go | TypeScript | **Go + TS** |
-| 部署方式 | 云端+本地桥接 | 本地 CLI | 本地 TUI | 自托管服务 | **本地 + 自托管 + 云端** |
-| IDE 集成 | ★★★★★ | ★★★ | ★ | ★ | **★★★★**（VS Code + JetBrains） |
-| 终端体验 | ★★ | ★★★★★ | ★★★★★ | ★★ | **★★★★★**（TUI） |
-| 多渠道 | ★ | ★ | ★ | ★★★★★ | **★★★★**（TG/Discord/Slack/Wx） |
-| 多 Agent | ★★★ | ★★★★ | ★★ | ★★★ | **★★★★★**（图编排 + 层级） |
-| 沙箱安全 | ★★★★★ | ★★★★★ | ★★ | ★★★ | **★★★★★**（OS 级） |
-| 开源 | ✗ | ✗ | ★★★★★ | ★★★★★ | **★★★★★** |
-| 异步任务 | ★★★ | ★ | ★ | ★★★★ | **★★★★★**（调度系统） |
-| Web UI | ★★★ | ★★ | ★ | ★★★★ | **★★★★★**（Dashboard + Playground） |
+| 维度 | Codex | OpenCode | OpenClaw | **Cangjie（目标）** |
+|------|-------|----------|----------|---------------------|
+| 语言栈 | TS/Python | Go | TypeScript | **Go + TS** |
+| 部署方式 | 云端+本地桥接 | 本地 TUI | 自托管服务 | **本地 + 自托管 + 云端** |
+| IDE 集成 | ★★★★★ | ★ | ★ | **★★★★**（VS Code + JetBrains） |
+| 终端体验 | ★★ | ★★★★★ | ★★ | **★★★★★**（TUI） |
+| 多渠道 | ★ | ★ | ★★★★★ | **★★★★**（TG/Discord/Slack/Wx） |
+| 多 Agent | ★★★ | ★★ | ★★★ | **★★★★★**（图编排 + 层级） |
+| 沙箱安全 | ★★★★★ | ★★ | ★★★ | **★★★★★**（OS 级） |
+| 开源 | ✗ | ★★★★★ | ★★★★★ | **★★★★★** |
+| 异步任务 | ★★★ | ★ | ★★★★ | **★★★★★**（调度系统） |
+| Web UI | ★★★ | ★ | ★★★★ | **★★★★★**（Dashboard + Playground） |
 
 ### 核心差异点
 
@@ -189,7 +148,6 @@ WhatsApp / Telegram / Slack / ...
 
 Cangjie 不是简单复制某个竞品，而是**汲取各家长处，构建一个更完整的统一 Agent 产品**：
 
-- 取 Claude Code 的**终端编程体验 + 沙箱安全**
 - 取 Codex 的**IDE 深度集成 + 自修复循环**
 - 取 OpenCode 的**轻量化 Go 实现 + 开源社区**
 - 取 OpenClaw 的**多渠道接入 + 异步调度 + Web 管理**

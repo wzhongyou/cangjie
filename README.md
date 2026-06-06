@@ -8,7 +8,7 @@
 
 **Cangjie** 是一个统一的 AI Agent 平台。既是 CLI 工具、TUI 应用、IDE 插件、多渠道 Bot，也是可编程的 Agent API。
 
-对标 **Codex**、**Claude Code**、**OpenCode**、**OpenClaw**，汲取各家长处，构建最完整的开源 Agent 产品。
+对标 **Codex**、**OpenCode**、**OpenClaw**，汲取各家长处，构建最完整的开源 Agent 产品。
 
 > 全 Go + TypeScript 实现。单二进制，零运行时依赖。
 > `brew install cangjie` 即可开始。

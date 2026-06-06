@@ -2,7 +2,7 @@
 
 ## 概述
 
-Cangjie（仓颉）是一个统一的 AI Agent 平台，全 Go 实现（前端 TypeScript）。对 Codex、Claude Code、OpenCode、OpenClaw 做统一对标，目标成为市面上最完整的开源 Agent 产品。
+Cangjie（仓颉）是一个统一的 AI Agent 平台，全 Go 实现（前端 TypeScript）。对 Codex、OpenCode、OpenClaw 做统一对标，目标成为市面上最完整的开源 Agent 产品。
 
 ## 文档导航
 
@@ -10,7 +10,7 @@ Cangjie（仓颉）是一个统一的 AI Agent 平台，全 Go 实现（前端 T
 
 | 文档 | 内容 |
 |------|------|
-| [竞品分析](competitive-analysis.md) | Codex / Claude Code / OpenCode / OpenClaw 能力对比与差异化定位 |
+| [竞品分析](competitive-analysis.md) | Codex / OpenCode / OpenClaw 能力对比与差异化定位 |
 | [架构设计](architecture.md) | 总体架构、包结构、核心接口、数据流、设计决策 |
 | [升级路线图](upgrade-roadmap.md) | 5 阶段升级路径、里程碑、版本规划 |
 
