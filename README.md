@@ -2,100 +2,136 @@
 
 > 仓颉造字，天雨粟，鬼夜哭。
 
-代码智能体 —— 能自主搜索、理解、修改代码。
+代码智能体 —— CLI 原生，VSCode 插件同步开发中。
 
 ---
 
-## 当前状态
+## 快速开始
 
-VSCode 插件形态，早期开发阶段。还没上市场，需要本地跑。
-
----
-
-## 开发环境
+### CLI（命令行）
 
 ```bash
-# 环境要求
-Node.js >= 22
-pnpm >= 9
+# 1. 从源码编译二进制（需要 bun）
+pnpm build
+bun build cli/dist/main.js --compile --outfile cj
 
-# 装依赖
+# 2. 安装到 PATH
+sudo cp cj /usr/local/bin/
+
+# 3. 环境变量（写入 ~/.zshrc，注意加 export）
+export ANTHROPIC_API_KEY=sk-ant-...     # 或 ANTHROPIC_AUTH_TOKEN
+export ANTHROPIC_BASE_URL=...           # 可选，兼容 API 需要
+
+# 4. 使用
+cj "在项目里搜登录相关逻辑"             # 单次执行
+cj                                      # 交互式 REPL
+cj --yes "重构这个函数"                 # 跳过权限确认
+cj --list                               # 历史会话
+cj --resume <id>                        # 恢复会话
+```
+
+交互模式内置命令：
+
+```
+/help    帮助        /exit    退出
+/save    保存会话    /list    历史会话
+/memory  查看记忆    Ctrl+C   中断
+```
+
+### 数据存储
+
+```
+~/.cangjie/              # 全局
+  sessions/              # 对话自动保存
+  config.json
+
+.cangjie/memory/          # 项目级（Agent 自动读取）
+  tech-stack.md           # 例如：项目技术栈说明
+```
+
+---
+
+## VSCode 插件（开发中）
+
+功能已实现，本地可跑，待发布市场：
+
+```bash
 pnpm install
-
-# 构建
-pnpm tsc -b packages/shared packages/agent-runtime packages/vscode-extension
-# 或者 VSCode 里 Cmd+Shift+B（配好了 build task）
-
-# 调试
-# F5 → 选 "Run Cangjie Extension" → 新窗口里 Cmd+Shift+P → Cangjie: Open Chat
-
-# 设 API Key（否则 Agent 跑不起来）
-export ANTHROPIC_API_KEY=sk-ant-...
-# 或者在打开的调试窗口里 Cmd+, → 搜 cangjie.llm.apiKey
+# F5 → 新窗口 → Cmd+Shift+L 打开对话
 ```
+
+- Chat 面板 + 流式输出
+- Diff Review（逐文件 Accept/Reject）
+- 权限确认弹窗
+- Cmd+K 行内编辑
 
 ---
 
-## 能干什么
+## 当前能力
 
-打开 Chat 面板，用自然语言下指令。Agent 自己搜索代码、定位、改文件、验证。
-
-```
-"auth.ts 的 token 刷新逻辑有个 Bug，修一下"
-"这个项目认证模块怎么设计的，讲清楚"
-"给登录接口加个验证码校验"
-"重构 user.ts，把这几个函数拆到单独文件"
-```
-
-实际效果取决于你配的模型。Agent 会自己调工具（读文件、搜索、编辑、跑命令）。
-
----
-
-## 怎么工作的
-
-```
-你发指令 → Agent 规划步骤 → 搜代码 → 读文件 → 改代码 → 验证 → Diff Review
-```
+| 能力 | CLI | 插件 |
+|------|:---:|:----:|
+| 自然语言对话 | ✅ | ✅ |
+| 读文件 / 搜索代码 (grep) | ✅ | ✅ |
+| 写文件 / Diff 编辑 | ✅ | ✅ |
+| 执行 Shell 命令 | ✅ | ✅ |
+| 流式输出 | ✅ | ✅ |
+| 多轮对话记忆 | ✅ | — |
+| 会话持久化 (`--resume`) | ✅ | — |
+| 项目 Memory (`.cangjie/`) | ✅ | — |
+| Diff Review 面板 | — | ✅ |
+| 权限弹窗确认 | — | ✅ |
+| Cmd+K 行内编辑 | — | ✅ |
 
 工具：`read_file` `grep` `write_file` `edit_file` `bash`
 
 ---
 
-## 配置
+## 项目结构
 
-```json
-// VSCode settings.json
-{
-  "cangjie.llm.provider": "anthropic",
-  "cangjie.llm.model": "claude-sonnet-4-6",
-  "cangjie.autoAllowReadOnly": true
-}
+```
+cangjie/
+├── cli/          # @cangjie/cli   CLI 命令行
+├── plugin/       # VSCode 插件
+├── core/         # @cangjie/core  Agent 运行时
+├── shared/       # @cangjie/shared 共享类型
+├── docs/         # 设计文档
+└── .cangjie/     # 项目 memory
 ```
 
 ---
 
-## 技术栈
+## 开发
 
-纯 TypeScript。[设计文档](docs/cangjie-design.md)
+```bash
+# 环境
+Node.js >= 22  |  pnpm >= 9
 
-| 层 | 选型 |
-|----|------|
-| 桌面 | VSCode Extension → 独立 App |
-| Agent | TypeScript (Node.js 22+) |
-| UI | React + Tailwind |
-| LLM | Anthropic / OpenAI / Gemini |
+# 构建 + 测试
+pnpm install
+pnpm build
+pnpm test
+
+# 编译 CLI 二进制（需要 bun）
+bun build cli/dist/main.js --compile --outfile cj
+
+# 代码检查
+pnpm lint          # Biome
+pnpm typecheck     # TypeScript
+```
 
 ---
 
 ## 路线图
 
-| 阶段 | 交付 |
+| 阶段 | 状态 |
 |------|------|
-| Phase 1 | VSCode 插件 + Chat 面板 |
-| Phase 2 | Agent Loop + 工具系统 + Diff Review |
-| Phase 3 | 混合搜索 + 代码索引 |
-| Phase 4 | Inline Edit + Memory 系统 |
-| Phase 5 | MCP + Plugin |
+| CLI 可用版 | ✅ v0.1 |
+| 会话 / Memory 持久化 | ✅ v0.1 |
+| Agent Loop + 5 工具 | ✅ v0.1 |
+| VSCode 插件 | ✅ 本地可用，待发布 |
+| 代码智能（LSP / 混合搜索） | 📋 |
+| MCP / Plugin 体系 | 📋 |
 
 ---
 

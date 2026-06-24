@@ -5,13 +5,8 @@
       "name": "Run Cangjie Extension",
       "type": "extensionHost",
       "request": "launch",
-      "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}/packages/vscode-extension",
-        "${workspaceFolder}"
-      ],
-      "outFiles": [
-        "${workspaceFolder}/packages/vscode-extension/dist/**/*.js"
-      ],
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/plugin", "${workspaceFolder}"],
+      "outFiles": ["${workspaceFolder}/plugin/dist/**/*.js"],
       "preLaunchTask": "build-cangjie",
       "env": {
         "ANTHROPIC_API_KEY": "${env:ANTHROPIC_API_KEY}"

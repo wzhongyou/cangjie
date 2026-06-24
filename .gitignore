@@ -5,10 +5,13 @@ node_modules/
 dist/
 *.vsix
 *.tsbuildinfo
+/cj
 
 # Test & coverage
 coverage/
 *.out
+.vite/
+.vitest/
 
 # IDE
 .idea/

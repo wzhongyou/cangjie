@@ -1,0 +1,23 @@
+{
+  "name": "@cangjie/shared",
+  "version": "0.1.0",
+  "description": "Cangjie shared types and utilities",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "test": "echo \"No tests yet\""
+  },
+  "dependencies": {
+    "zod": "^3.23.0"
+  }
+}

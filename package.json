@@ -6,16 +6,28 @@
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm -r dev",
-    "lint": "pnpm -r lint",
+    "typecheck": "tsc -b shared core cli plugin",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
     "test": "pnpm -r test",
-    "clean": "pnpm -r clean"
+    "clean": "pnpm -r clean",
+    "prepare": "simple-git-hooks"
   },
   "engines": {
     "node": ">=22.0.0",
     "pnpm": ">=9.0.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.1",
     "@types/node": "^25.9.1",
+    "lint-staged": "^17.0.8",
+    "simple-git-hooks": "^2.13.1",
     "typescript": "^6.0.3"
+  },
+  "lint-staged": {
+    "*.{ts,json,md}": [
+      "biome check --write --no-errors-on-unmatched"
+    ]
   }
 }

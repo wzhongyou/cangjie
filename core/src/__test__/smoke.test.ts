@@ -1,0 +1,190 @@
+/**
+ * 冒烟测试：Agent Loop 核心链路
+ *
+ * pnpm test（或 pnpm -C core test）
+ */
+
+import type { LlmRequest, LlmResponse, StreamEvent } from '@cangjie/shared';
+import { describe, expect, it } from 'vitest';
+import { CangjieAgent } from '../agent-loop.js';
+import type { LlmClient } from '../llm/client.js';
+import { ToolRegistry } from '../tools/registry.js';
+
+// 模拟 LLM 客户端（不实际调用 API）
+function createMockLlm(): LlmClient {
+  return {
+    async chat(req: LlmRequest): Promise<LlmResponse> {
+      return {
+        message: { role: 'assistant', content: 'ok' },
+        usage: { input: 10, output: 5 },
+      };
+    },
+    async *chatStream(req: LlmRequest): AsyncGenerator<StreamEvent> {
+      const lastMsg = req.messages[req.messages.length - 1];
+      const userContent = typeof lastMsg.content === 'string' ? lastMsg.content : '';
+
+      if (userContent.includes('test-grep')) {
+        // 返回工具调用
+        yield { type: 'text_delta', text: '我来搜索' };
+        yield { type: 'tool_use_start', id: 'tc1', name: 'grep' };
+        yield { type: 'tool_use_delta', id: 'tc1', arguments: '{"pattern":"login"' };
+        yield { type: 'tool_use_delta', id: 'tc1', arguments: ',"path":"src"}' };
+        yield {
+          type: 'tool_use_end',
+          id: 'tc1',
+          name: 'grep',
+          arguments: { pattern: 'login', path: 'src' },
+        };
+        yield { type: 'done', usage: { input: 100, output: 50 } };
+        return;
+      }
+
+      if (lastMsg.role === 'tool') {
+        // 工具结果返回后，模型给出最终回复
+        yield { type: 'text_delta', text: '搜索完成，找到 3 个结果。' };
+        yield { type: 'done', usage: { input: 200, output: 30 } };
+        return;
+      }
+
+      // 默认：直接回复
+      yield { type: 'text_delta', text: '收到你的消息。' };
+      yield { type: 'done', usage: { input: 100, output: 20 } };
+    },
+  };
+}
+
+describe('Agent Loop', () => {
+  it('初次调用 LLM 并返回响应', async () => {
+    const llm = createMockLlm();
+    const tools = new ToolRegistry();
+    const agent = new CangjieAgent(llm, tools, {
+      config: {
+        llm: { provider: 'mock', apiKey: '', model: 'mock', maxTokens: 1000 },
+        permissions: { autoAllowReadOnly: true, rules: [] },
+        context: { maxHistoryTokens: 10000, compactionThreshold: 0.9 },
+      },
+      workspaceRoot: '/tmp/test',
+      sessionId: 'test-1',
+    });
+
+    const events: any[] = [];
+    for await (const event of agent.run({ prompt: 'hello' })) {
+      events.push(event);
+    }
+
+    expect(events.some((e) => e.type === 'response')).toBe(true);
+    expect(events.some((e) => e.type === 'done')).toBe(true);
+  });
+
+  it('调用工具并返回工具结果', async () => {
+    const llm = createMockLlm();
+    const tools = new ToolRegistry();
+    const agent = new CangjieAgent(llm, tools, {
+      config: {
+        llm: { provider: 'mock', apiKey: '', model: 'mock', maxTokens: 1000 },
+        permissions: { autoAllowReadOnly: true, rules: [] },
+        context: { maxHistoryTokens: 10000, compactionThreshold: 0.9 },
+      },
+      workspaceRoot: '/tmp/test',
+      sessionId: 'test-2',
+    });
+
+    const events: any[] = [];
+    for await (const event of agent.run({ prompt: 'test-grep login' })) {
+      events.push(event);
+    }
+
+    // grep tool is registered, should have tool_call and tool_result
+    const toolCalls = events.filter((e) => e.type === 'tool_call');
+    const toolResults = events.filter((e) => e.type === 'tool_result');
+    const done = events.find((e) => e.type === 'done');
+
+    expect(toolCalls.length).toBeGreaterThan(0);
+    expect(toolResults.length).toBeGreaterThan(0);
+    expect(done).toBeDefined();
+  });
+
+  it('AbortSignal 中断', async () => {
+    let callCount = 0;
+    const multiCallLlm: LlmClient = {
+      async chat(_req: LlmRequest): Promise<LlmResponse> {
+        return { message: { role: 'assistant', content: 'ok' }, usage: { input: 1, output: 1 } };
+      },
+      async *chatStream(_req: LlmRequest): AsyncGenerator<StreamEvent> {
+        callCount++;
+        if (callCount <= 1) {
+          yield { type: 'tool_use_start', id: 't1', name: 'grep' };
+          yield { type: 'tool_use_delta', id: 't1', arguments: '{}' };
+          yield {
+            type: 'tool_use_end',
+            id: 't1',
+            name: 'grep',
+            arguments: { pattern: 'test' },
+          };
+          yield { type: 'done', usage: { input: 1, output: 1 } };
+          return;
+        }
+        yield { type: 'text_delta', text: 'done' };
+        yield { type: 'done', usage: { input: 1, output: 1 } };
+      },
+    };
+
+    const tools = new ToolRegistry();
+    const agent = new CangjieAgent(multiCallLlm, tools, {
+      config: {
+        llm: { provider: 'mock', apiKey: '', model: 'mock', maxTokens: 1000 },
+        permissions: { autoAllowReadOnly: true, rules: [] },
+        context: { maxHistoryTokens: 10000, compactionThreshold: 0.9 },
+      },
+      workspaceRoot: '/tmp/test',
+      sessionId: 'test-3',
+      maxSteps: 10,
+    });
+
+    const controller = new AbortController();
+
+    const events: any[] = [];
+    for await (const event of agent.run({ prompt: 'hello' }, controller.signal)) {
+      events.push(event);
+      if (event.type === 'tool_call') {
+        controller.abort();
+      }
+    }
+
+    expect(events.some((e) => e.type === 'error')).toBe(true);
+  });
+});
+
+describe('ToolRegistry', () => {
+  it('内置工具已注册', () => {
+    const tools = new ToolRegistry();
+    const names = tools.list();
+    expect(names).toContain('read_file');
+    expect(names).toContain('grep');
+    expect(names).toContain('write_file');
+    expect(names).toContain('edit_file');
+    expect(names).toContain('bash');
+  });
+});
+
+describe('Builtin Tools', () => {
+  it('read_file 读取存在的文件', async () => {
+    const { readFileTool } = await import('../tools/builtin/read-file.js');
+    const result = await readFileTool.execute(
+      { file_path: 'package.json' },
+      { workspaceRoot: process.cwd(), sessionId: 't', signal: new AbortController().signal },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.content).toContain('cangjie');
+  });
+
+  it('grep 搜索代码', async () => {
+    const { grepTool } = await import('../tools/builtin/grep.js');
+    const root = process.cwd();
+    const result = await grepTool.execute(
+      { pattern: 'cangjie', path: '.' },
+      { workspaceRoot: root, sessionId: 't', signal: new AbortController().signal },
+    );
+    expect(result.content.length).toBeGreaterThan(0);
+  });
+});

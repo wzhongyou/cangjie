@@ -1,7 +1,12 @@
 packages:
-  - "packages/*"
+  - "shared"
+  - "core"
+  - "cli"
+  - "plugin"
+
 allowBuilds:
   '@vscode/vsce-sign': true
   better-sqlite3: true
   esbuild: true
   keytar: true
+  simple-git-hooks: true
