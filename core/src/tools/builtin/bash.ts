@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { Tool, ToolContext, ToolDefinition, ToolResult } from '@cangjie/shared';
+import { checkBashCommand } from '../../sandbox.js';
 
 const definition: ToolDefinition = {
   name: 'bash',
@@ -20,6 +21,12 @@ async function execute(args: Record<string, unknown>, ctx: ToolContext): Promise
     return { content: 'bash: 缺少 command 参数', error: 'invalid_args' };
   }
   const timeout = (args.timeout as number) || 30000;
+
+  // 沙箱检查
+  const check = checkBashCommand(command);
+  if (!check.allowed) {
+    return { content: `bash: 命令被阻止 — ${check.reason}`, error: 'blocked' };
+  }
 
   return new Promise((resolve) => {
     const child = spawn(command, {
