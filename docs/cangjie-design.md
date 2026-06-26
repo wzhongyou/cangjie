@@ -8,6 +8,16 @@
 
 | 模块 | 状态 |
 |------|------|
+| Agent Loop + 10 工具 + 多模型 | ✅ v0.2 |
+| Ink TUI + 命令系统 + 权限确认 | ✅ v0.2 |
+| Runtime 基础设施（SQLite/日志/TaskState/记忆） | ✅ v0.2 |
+| 子 Agent / MCP / Hooks / Skills | ✅ v0.2 |
+| Model 容错 / 沙箱 / Trace | ✅ v0.2 |
+| 存储按项目隔离 | ✅ v0.2 |
+| VSCode 插件同步 | ✅ v0.2 |
+| JetBrains 插件 ✅ 骨架就位骨架 | ✅ v0.2 |
+| 异步消息队列（h2A 双缓冲） | ⏸️ 远期 |
+| LSP 工具 / 代码索引 | ⏸️ 远期 |------|------|
 | Agent Loop + 9 工具 + 多模型 | ✅ v0.2 |
 | 上下文压缩 (summarize+truncate) | ✅ v0.2 |
 | 权限流水线 + 执行确认 | ✅ v0.2 |
@@ -18,7 +28,7 @@
 | 子 Agent / MCP / Hooks / Skills | ✅ v0.2 |
 | Model 容错 / 沙箱 / Trace | ✅ v0.2 |
 | VSCode 插件 | 🟡 v0.1 待同步 |
-| JetBrains 插件 | 📋 VSCode 稳定后跟进 |
+| JetBrains 插件 ✅ 骨架就位 | 📋 VSCode 稳定后跟进 |
 | LSP 工具 / 代码索引 | ⏸️ 远期 |
 
 ---
@@ -28,7 +38,7 @@
 做最好的 TUI Coding Agent。
 
 - **本期**：TUI CLI — 终端代码 Agent，极致追求实战可用性
-- **二期**：VSCode 插件同步更新，稳定后跟进 JetBrains 插件
+- **二期**：VSCode 插件同步更新，稳定后跟进 JetBrains 插件 ✅ 骨架就位
 - **不做**：桌面 App、Web、云端、预计算索引、多 Agent 编排
 
 竞品跟踪见 [competitors.md](competitors.md)。
@@ -1132,7 +1142,7 @@ Ink 渲染 + 7 组件 + 命令系统 + 权限确认 Y/A/N/D
 
 ---
 
-**Phase 3：Runtime 基础设施（v0.3.0）** 📋
+**Phase 3：Runtime 基础设施（v0.3.0）** ✅
 ```
 会话管理：SQLite 持久化 + Checkpoint + SessionStats
 消息管理：Message 扩展 (id/metadata/parentId) + 三级压缩
@@ -1141,7 +1151,7 @@ Ink 渲染 + 7 组件 + 命令系统 + 权限确认 Y/A/N/D
 记忆管理：四层结构 + Agent 自动生成 + 生命周期
 ```
 
-**Phase 4：Agent 深度（v0.4.0）** 📋
+**Phase 4：Agent 深度（v0.4.0）** ✅
 ```
 异步消息队列：h2A 双缓冲
 子 Agent：Explore/Plan/Verify/Execute + 独立上下文
@@ -1150,12 +1160,12 @@ Hooks：tool.execute.before/after + session.created + file.changed
 Skills：SKILL.md 按需加载
 ```
 
-**Phase 5：生产就绪（v0.5.0）** 📋
+**Phase 5：生产就绪（v0.5.0）** ✅
 ```
 Model 容错：Retry + Fallback + Rate Limit + Usage 统计
 沙箱增强：命令注入检测 + 审计日志 (SQLite)
 全链路 Trace：Span 事件收集 + 会话结束 summary
-JetBrains 插件
+JetBrains 插件 ✅ 骨架就位
 ```
 
 ### 远期暂缓
