@@ -1,53 +1,58 @@
 /**
  * Agent Service — VSCode Extension 和 Agent Runtime 之间的桥接层
  *
- * 职责：
- * 1. 读取 VSCode 配置初始化 Agent
- * 2. 将 Agent 事件流转发给 Chat Webview
- * 3. 提供工具所需的工作区上下文
- * 4. 权限确认桥接
- * 5. 文件变更追踪（Diff Review）
+ * v0.2 更新：
+ * - 多模型 Provider 支持
+ * - Resilient client（自动重试/降级）
+ * - Skills + Memory + Hooks 自动加载
+ * - MCP 工具注册
+ * - 文件变更追踪
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { CangjieAgent, createLlmClient, PermissionPipeline, ToolRegistry } from '@cangjie/core';
+import {
+  CangjieAgent, createResilientClient, ToolRegistry, hooks,
+  loadUserMemories, loadProjectMemories, discoverSkills, McpClient,
+} from '@cangjie/core';
 import type { AgentEvent, CangjieConfig, PermissionDecision, Tool } from '@cangjie/shared';
 import * as vscode from 'vscode';
 import type { FileChange } from '../webview/diff-panel.js';
 
-/** 权限确认回调：AgentService → Webview → 用户 → 返回决策 */
 export type PermissionAskCallback = (tool: string, args: Record<string, unknown>) => Promise<PermissionDecision>;
 
 export class AgentService {
   private agent: CangjieAgent | null = null;
+  private currentConfig: CangjieConfig | null = null;
 
-  /** 从 VSCode 配置构建 CangjieConfig */
   private getConfig(): CangjieConfig {
     const cfg = vscode.workspace.getConfiguration('cangjie');
-    return {
+    const provider = cfg.get('llm.provider', 'anthropic');
+    const config: CangjieConfig = {
       llm: {
-        provider: cfg.get('llm.provider', 'anthropic'),
-        apiKey: cfg.get('llm.apiKey', '') || process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || '',
-        model:
-          cfg.get('llm.model', 'claude-sonnet-4-6') ||
-          process.env.ANTHROPIC_MODEL ||
-          process.env.ANTHROPIC_DEFAULT_SONNET_MODEL ||
-          'claude-sonnet-4-6',
-        maxTokens: 8192,
+        provider,
+        apiKey: cfg.get('llm.apiKey', '') ||
+          (provider === 'anthropic' ? (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || '') :
+           provider === 'openai' ? (process.env.OPENAI_API_KEY || '') : (process.env.OPENAI_API_KEY || '')),
+        model: cfg.get('llm.model', provider === 'anthropic' ? 'claude-sonnet-4-6' : 'gpt-4o'),
+        maxTokens: cfg.get('llm.maxTokens', 8192),
+        baseUrl: cfg.get('llm.baseUrl', '') || undefined,
       },
       permissions: {
         autoAllowReadOnly: cfg.get('autoAllowReadOnly', true),
         rules: [],
       },
       context: {
-        maxHistoryTokens: 100000,
-        compactionThreshold: 0.85,
+        maxHistoryTokens: cfg.get('context.maxHistoryTokens', 100000),
+        compactionThreshold: cfg.get('context.compactionThreshold', 0.85),
+        compactionStrategy: 'summarize',
       },
+      provider: provider as any,
     };
+    this.currentConfig = config;
+    return config;
   }
 
-  /** 本次 Agent 执行 */
   async *run(
     userMessage: string,
     signal?: AbortSignal,
@@ -56,47 +61,70 @@ export class AgentService {
     const config = this.getConfig();
 
     if (!config.llm.apiKey) {
-      yield { type: 'error', error: '请先设置 API Key（环境变量或 VSCode 配置 cangjie.llm.apiKey）' };
+      yield { type: 'error', error: '请设置 API Key（环境变量或 VSCode 配置 cangjie.llm.apiKey）' };
       return;
     }
 
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
 
-    // 构建 LLM 客户端
-    const llm = createLlmClient({
-      provider: config.llm.provider,
-      apiKey: config.llm.apiKey,
-      model: config.llm.model,
-      baseUrl: process.env.ANTHROPIC_BASE_URL || undefined,
-    });
+    // Resilient client with retry + fallback
+    const { client: llm } = createResilientClient(
+      {
+        provider: config.llm.provider as any,
+        apiKey: config.llm.apiKey,
+        model: config.llm.model,
+        baseUrl: config.llm.baseUrl,
+        maxTokens: config.llm.maxTokens,
+      },
+      { maxRetries: 3, retryBaseMs: 1000 },
+    );
 
-    // 文件变更追踪
+    // Load hooks
+    hooks.loadFromWorkspace(workspaceRoot);
+
+    // File change tracking
     const fileChanges: FileChange[] = [];
-
-    // 注册工具（包装 write_file / edit_file 以追踪变更）
     const tools = this.createTrackedToolRegistry(workspaceRoot, fileChanges);
 
-    // 构建权限管线
-    const permission = new PermissionPipeline(config.permissions);
+    // Load MCP servers from config
+    const mcpServers = vscode.workspace.getConfiguration('cangjie').get('mcp') as Record<string, { command: string; args?: string[] }> | undefined;
+    if (mcpServers) {
+      for (const [name, srv] of Object.entries(mcpServers)) {
+        try {
+          const client = new McpClient(srv);
+          await client.connect();
+          for (const def of client.tools) {
+            tools.register({
+              definition: def,
+              async execute(args: Record<string, unknown>) {
+                return { content: await client.callTool(def.name, args) };
+              },
+            });
+          }
+        } catch (err: any) {
+          console.error(`MCP ${name}: ${err.message}`);
+        }
+      }
+    }
+
+    // Build rich system prompt
+    const systemPrompt = this.buildSystemPrompt(workspaceRoot);
+
+    // Agent
+    this.agent = new CangjieAgent(llm, tools, {
+      config,
+      workspaceRoot,
+      sessionId: `vscode-${Date.now().toString(36)}`,
+    });
+
+    // Permission override
     if (onPermissionAsk) {
-      permission.onAsk(async (tool, args) => {
+      (this.agent as any).permission.onAsk(async (tool: string, args: Record<string, unknown>) => {
         return await onPermissionAsk(tool, args);
       });
     }
 
-    // 构建 Agent
-    this.agent = new CangjieAgent(llm, tools, {
-      config,
-      workspaceRoot,
-      sessionId: `session-${Date.now()}`,
-    });
-
-    // 注入自定义权限管线
-    (this.agent as any).permission = permission;
-
-    // 获取当前编辑器上下文注入 prompt
     const editorContext = this.getEditorContext();
-    const systemPrompt = this.buildSystemPrompt();
 
     for await (const event of this.agent.run(
       {
@@ -108,7 +136,7 @@ export class AgentService {
       yield event;
     }
 
-    // Agent 完成后，发送文件变更事件
+    // File change events
     for (const change of fileChanges) {
       yield {
         type: 'file_changed',
@@ -119,112 +147,89 @@ export class AgentService {
     }
   }
 
-  /** 获取本次执行产生的文件变更 */
-  getFileChanges(): FileChange[] {
-    return [];
-  }
-
-  /** 创建带文件追踪的 ToolRegistry */
   private createTrackedToolRegistry(workspaceRoot: string, fileChanges: FileChange[]): ToolRegistry {
     const registry = new ToolRegistry();
 
-    // 替换 write_file 和 edit_file 为追踪版本
+    // Track write_file changes
     const originalWrite = registry.get('write_file');
-    const originalEdit = registry.get('edit_file');
-
     if (originalWrite) {
-      const trackedWrite: Tool = {
+      const tracked: Tool = {
         definition: originalWrite.definition,
         execute: async (args, ctx) => {
-          const filePath = path.resolve(workspaceRoot, args.file_path as string);
-          let preContent = '';
-          try {
-            preContent = fs.readFileSync(filePath, 'utf-8');
-          } catch {}
-
+          const fp = path.resolve(workspaceRoot, args.file_path as string);
+          let pre = ''; try { pre = fs.readFileSync(fp, 'utf-8'); } catch {}
           const result = await originalWrite.execute(args, ctx);
-
           if (!result.error) {
-            const postContent = args.content as string;
-            if (preContent !== postContent) {
-              fileChanges.push({ filePath, preContent, postContent });
-            }
+            const post = args.content as string;
+            if (pre !== post) fileChanges.push({ filePath: fp, preContent: pre, postContent: post });
           }
           return result;
         },
       };
-      // 替换（ToolRegistry 没有 unregister，我们用新的 Agent 实例）
-      (registry as any).tools.set('write_file', trackedWrite);
+      (registry as any).tools.set('write_file', tracked);
     }
 
+    // Track edit_file changes
+    const originalEdit = registry.get('edit_file');
     if (originalEdit) {
-      const trackedEdit: Tool = {
+      const tracked: Tool = {
         definition: originalEdit.definition,
         execute: async (args, ctx) => {
-          const filePath = path.resolve(workspaceRoot, args.file_path as string);
-          let preContent = '';
-          try {
-            preContent = fs.readFileSync(filePath, 'utf-8');
-          } catch {}
-
+          const fp = path.resolve(workspaceRoot, args.file_path as string);
+          let pre = ''; try { pre = fs.readFileSync(fp, 'utf-8'); } catch {}
           const result = await originalEdit.execute(args, ctx);
-
           if (!result.error) {
-            let postContent = '';
-            try {
-              postContent = fs.readFileSync(filePath, 'utf-8');
-            } catch {}
-            if (preContent !== postContent) {
-              fileChanges.push({ filePath, preContent, postContent });
-            }
+            let post = ''; try { post = fs.readFileSync(fp, 'utf-8'); } catch {}
+            if (pre !== post) fileChanges.push({ filePath: fp, preContent: pre, postContent: post });
           }
           return result;
         },
       };
-      (registry as any).tools.set('edit_file', trackedEdit);
+      (registry as any).tools.set('edit_file', tracked);
     }
 
     return registry;
   }
 
-  /** 获取当前编辑器上下文 */
   private getEditorContext(): string {
     const editor = vscode.window.activeTextEditor;
     if (!editor) return '';
-
-    const document = editor.document;
-    const selection = editor.selection;
-    const selectedText = document.getText(selection);
-    const cursorLine = selection.active.line + 1;
-
-    let context = `文件: ${document.uri.fsPath}\n语言: ${document.languageId}\n行数: ${document.lineCount}\n光标行: ${cursorLine}`;
-
-    if (selectedText) {
-      context += `\n\n选中代码:\n\`\`\`${document.languageId}\n${selectedText}\n\`\`\``;
-    } else {
-      const start = Math.max(0, selection.active.line - 10);
-      const end = Math.min(document.lineCount, selection.active.line + 10);
-      const nearbyText = document.getText(new vscode.Range(start, 0, end, 0));
-      context += `\n\n光标附近代码:\n\`\`\`${document.languageId}\n${nearbyText}\n\`\`\``;
+    const doc = editor.document;
+    const sel = editor.selection;
+    const text = doc.getText(sel);
+    let ctx = `文件: ${doc.uri.fsPath}\n语言: ${doc.languageId}\n行数: ${doc.lineCount}\n光标行: ${sel.active.line + 1}`;
+    if (text) {
+      ctx += `\n\n选中代码:\n\`\`\`${doc.languageId}\n${text}\n\`\`\``;
     }
-
-    return context;
+    return ctx;
   }
 
-  private buildSystemPrompt(): string {
-    return [
-      'You are Cangjie, a code agent running in VSCode.',
-      '',
-      '## Tools',
-      'You have tools for reading, searching, and editing code. Use them.',
-      '',
-      '## Rules',
-      '- Before writing code, read and understand the existing code first.',
-      '- Prefer edit_file (diff-based) for small changes; use write_file for new files or full rewrites.',
-      '- After making changes, verify them — run tests or check for errors.',
-      "- Keep responses in the user's language.",
-      "- When you see [当前编辑器上下文], use that information to understand the user's focus.",
-    ].join('\n');
+  private buildSystemPrompt(workspaceRoot: string): string {
+    const parts: string[] = [];
+    parts.push('You are Cangjie, a code agent running in VSCode.');
+    parts.push('');
+
+    // User + Project Memory
+    try {
+      const user = loadUserMemories();
+      const project = loadProjectMemories(workspaceRoot);
+      if (user.length) parts.push('## User Memory\n\n' + user.map((m: any) => m.content.body).join('\n\n'));
+      if (project.length) parts.push('## Project Memory\n\n' + project.map((m: any) => m.content.body).join('\n\n'));
+    } catch {}
+
+    // Skills
+    try {
+      const skills = discoverSkills(workspaceRoot);
+      if (skills.length) parts.push('## Available Skills\n\n' + skills.map((s) => `- ${s.name}: ${s.description}`).join('\n'));
+    } catch {}
+
+    parts.push('');
+    parts.push('## Rules');
+    parts.push('- Before writing code, read and understand the existing code first.');
+    parts.push('- Prefer edit_file for small changes; use write_file for new files or full rewrites.');
+    parts.push("- Keep responses in the user's language.");
+
+    return parts.join('\n');
   }
 
   dispose() {

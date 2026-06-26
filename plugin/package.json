@@ -2,7 +2,7 @@
   "name": "cangjie",
   "displayName": "Cangjie - 代码智能体",
   "description": "AI 原生代码智能平台 — VSCode 里的自主代码 Agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "publisher": "cangjie",
   "license": "MIT",
@@ -14,12 +14,7 @@
     "Other"
   ],
   "keywords": [
-    "ai",
-    "agent",
-    "code",
-    "claude",
-    "cursor",
-    "cangjie"
+    "ai", "agent", "code", "cangjie", "tui", "coding-agent"
   ],
   "engines": {
     "vscode": "^1.90.0"
@@ -81,6 +76,26 @@
           "type": "boolean",
           "default": true,
           "description": "自动放行只读工具（搜索、读文件等）"
+        },
+        "cangjie.llm.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "API Base URL（openai-compat 时必填）"
+        },
+        "cangjie.llm.maxTokens": {
+          "type": "number",
+          "default": 8192,
+          "description": "最大输出 Token 数"
+        },
+        "cangjie.context.maxHistoryTokens": {
+          "type": "number",
+          "default": 100000,
+          "description": "上下文窗口大小"
+        },
+        "cangjie.mcp": {
+          "type": "object",
+          "default": {},
+          "description": "MCP 服务器配置"
         }
       }
     }
