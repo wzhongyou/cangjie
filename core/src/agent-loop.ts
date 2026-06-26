@@ -12,6 +12,7 @@ import type { AgentEvent, CangjieConfig, Message, StreamEvent, Tool } from '@can
 import { ContextManager } from './context/manager.js';
 import type { LlmClient } from './llm/client.js';
 import { agentLog, llmLog, permLog, toolLog } from './logger.js';
+import { Trace } from './trace.js';
 import { PermissionPipeline } from './permission/pipeline.js';
 import {
   type SessionRow,
@@ -136,6 +137,7 @@ export class CangjieAgent {
     messages.push({ role: 'user', content: input.prompt });
 
     agentLog.info({ sessionId: this.cfg.sessionId }, 'Agent run started');
+    const trace = new Trace(this.cfg.sessionId);
 
     // Ensure session row exists in SQLite
     const now = new Date().toISOString();
@@ -168,6 +170,7 @@ export class CangjieAgent {
 
       // === LLM 流式调用 ===
       const llmStart = Date.now();
+      const llmSpanId = trace.startSpan("llm_call", { model: this.cfg.config.llm.model, step });
       let textContent = '';
       const pendingToolCalls: Array<{
         id: string;
@@ -216,11 +219,13 @@ export class CangjieAgent {
         }
       } catch (err: any) {
         llmLog.error({ step, duration: Date.now() - llmStart, error: err.message }, 'LLM call failed');
+        trace.endSpan(llmSpanId, "error", err.message);
         yield { type: 'error', error: `LLM 调用失败: ${err.message}` };
         break;
       }
 
       llmLog.debug({ step, duration: Date.now() - llmStart, toolCalls: pendingToolCalls.length }, 'LLM call done');
+      trace.endSpan(llmSpanId, "ok");
 
       // Persist assistant message
       try {
@@ -249,6 +254,7 @@ export class CangjieAgent {
         yield { type: 'response', content: textContent };
         yield { type: 'done', steps: step + 1 };
         agentLog.info({ steps: step + 1 }, 'Agent run completed');
+        trace.finish();
         break;
       }
 
