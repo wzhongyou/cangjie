@@ -58,6 +58,64 @@ export class CangjieAgent {
   }
 
   /**
+   * 子 Agent 调度
+   *
+   * 创建独立 CangjieAgent 实例，拥有自己的消息上下文。
+   * 父 Agent 只拿到子 Agent 的最终摘要，不污染 context window。
+   */
+  async spawnSubAgent(
+    type: string,
+    prompt: string,
+    maxSteps: number,
+    parentSignal?: AbortSignal,
+  ): Promise<string> {
+    const subCfg = {
+      ...this.cfg,
+      maxSteps,
+    };
+
+    const subAgent = new CangjieAgent(this.llm, this.tools, subCfg);
+
+    const systemPrompt = [
+      `You are a sub-agent of type "${type}".`,
+      `Your task: ${prompt}`,
+      '',
+      'Guidelines:',
+      '- Focus ONLY on the assigned task.',
+      '- Return your findings as a concise summary.',
+      '- Do not ask questions back to the user.',
+      type !== 'execute' ? '- You have READ-ONLY access.' : '',
+      type !== 'execute' ? '- Do not modify files or run shell commands with side effects.' : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const events: string[] = [];
+    let steps = 0;
+
+    try {
+      for await (const event of subAgent.run({ prompt, systemPrompt }, parentSignal)) {
+        steps++;
+        if (event.type === 'response') {
+          events.push(event.content);
+        } else if (event.type === 'error') {
+          events.push(`[Error: ${event.error}]`);
+        } else if (event.type === 'done') {
+          steps = event.steps;
+        }
+      }
+    } catch (err: any) {
+      agentLog.error({ subAgentType: type, error: err.message }, 'Sub-agent crashed');
+      return `Sub-agent failed: ${err.message}`;
+    }
+
+    const summary = events.join('\n').slice(0, 5000);
+    agentLog.info({ subAgentType: type, steps, resultLength: summary.length }, 'Sub-agent completed');
+
+    return summary || '(sub-agent completed without output)';
+  }
+
+  /**
    * 流式执行 Agent
    *
    * v0.1 改进：
@@ -222,6 +280,9 @@ export class CangjieAgent {
                 workspaceRoot: this.cfg.workspaceRoot,
                 sessionId: this.cfg.sessionId,
                 signal: signal ?? new AbortController().signal,
+                spawnSubAgent: async (type: string, prompt: string, maxSteps: number) => {
+                  return this.spawnSubAgent(type, prompt, maxSteps, signal);
+                },
               })
             : { content: `Tool not found: ${tc.name}`, error: 'not_found' };
 

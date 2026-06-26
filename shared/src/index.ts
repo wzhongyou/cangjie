@@ -92,6 +92,8 @@ export interface ToolContext {
   workspaceRoot: string;
   sessionId: string;
   signal: AbortSignal;
+  /** 子 Agent 调度需要 LLM 客户端（Phase 4） */
+  spawnSubAgent?: (type: string, prompt: string, maxSteps: number) => Promise<string>;
 }
 
 export interface ToolResult {

@@ -177,8 +177,9 @@ describe('ToolRegistry', () => {
     expect(names).toContain('todo_write');
     expect(names).toContain('web_fetch');
     expect(names).toContain('web_search');
-    // 总共 9 个内置工具
-    expect(names.length).toBe(9);
+    expect(names).toContain('task');
+    // 总共 10 个内置工具
+    expect(names.length).toBe(10);
   });
 });
 
