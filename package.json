@@ -6,7 +6,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm -r dev",
-    "typecheck": "tsc -b shared core cli plugin",
+    "typecheck": "tsc -b shared core cli ide/vscode",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",

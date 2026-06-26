@@ -2,7 +2,7 @@ packages:
   - "shared"
   - "core"
   - "cli"
-  - "plugin"
+  - "ide/vscode"
 
 allowBuilds:
   '@vscode/vsce-sign': true

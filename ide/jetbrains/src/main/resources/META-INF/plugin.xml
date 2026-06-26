@@ -1,0 +1,40 @@
+<idea-plugin>
+    <id>com.cangjie.agent</id>
+    <name>Cangjie</name>
+    <vendor>Cangjie Team</vendor>
+
+    <description><![CDATA[
+        TUI Coding Agent — 终端代码智能体，JetBrains IDE 集成。
+        选中代码，Cmd+K 一键重构。Diff 预览，逐块审查。
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>org.jetbrains.plugins.terminal</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow
+            id="Cangjie"
+            anchor="bottom"
+            icon="AllIcons.General.Modified"
+            factoryClass="com.cangjie.CangjieToolWindowFactory"/>
+    </extensions>
+
+    <actions>
+        <action
+            id="cangjie.inlineEdit"
+            class="com.cangjie.actions.InlineEditAction"
+            text="Cangjie: Edit Code"
+            description="选中代码，让 Cangjie 重构">
+            <keyboard-shortcut keymap="$default" first-keystroke="meta K"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+        </action>
+
+        <action
+            id="cangjie.explainCode"
+            class="com.cangjie.actions.ExplainCodeAction"
+            text="Cangjie: Explain Code"
+            description="选中代码，让 Cangjie 解释">
+            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="cangjie.inlineEdit"/>
+        </action>
+    </actions>
+</idea-plugin>

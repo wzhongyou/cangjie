@@ -70,14 +70,14 @@ importers:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@25.9.1)
 
-  plugin:
+  ide/vscode:
     dependencies:
       '@cangjie/core':
         specifier: workspace:*
-        version: link:../core
+        version: link:../../core
       '@cangjie/shared':
         specifier: workspace:*
-        version: link:../shared
+        version: link:../../shared
     devDependencies:
       '@types/vscode':
         specifier: ^1.90.0
