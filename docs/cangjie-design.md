@@ -13,10 +13,10 @@
 | 权限流水线 + 执行确认 | ✅ v0.2 |
 | 会话持久化 + Memory | ✅ v0.2 |
 | Ink TUI 渲染 + 命令系统 | ✅ v0.2 |
-| 会话协议 / 异步消息队列 | 📋 Phase 3 |
-| Model 容错（Retry/Fallback/限流） | 📋 Phase 3 |
-| 子 Agent / MCP / Hooks / Skills | 📋 Phase 3 |
-| 沙箱（命令注入检测/审计） | 📋 Phase 3 |
+| Runtime 数据结构（会话/消息/TaskState/日志/记忆） | 📋 Phase 3 | §15 |
+| 异步消息队列（h2A 双缓冲） | 📋 Phase 4 |
+| 子 Agent / MCP / Hooks / Skills | 📋 Phase 4 |
+| Model 容错 / 沙箱 / Trace / JetBrains | 📋 Phase 5 |
 | LSP 工具 / 代码索引 | ⏸️ 远期 |
 
 ---
@@ -67,23 +67,18 @@
 │  │   Tool System     │    │   Context Engine         │         │
 │  │   (TypeScript)    │    │   (TypeScript)            │         │
 │  │  ┌──────────────┐ │    │  ┌────────────────────┐  │         │
-│  │  │ read/write   │ │    │  │ TokenBudget        │  │         │
-│  │  │ edit/grep    │ │    │  │ CompactionStrategy │  │         │
-│  │  │ bash/glob    │ │    │  │ ProjectContext     │  │         │
-│  │  │ task/web_*   │ │    │  │ MemorySystem       │  │         │
-│  │  │ lsp/search   │ │    │  └────────────────────┘  │         │
-│  │  └──────────────┘ │    └──────────────────────────┘         │
+│  │  │ read_file    │ │    │  │ TokenBudget        │  │         │
+│  │  │ write_file   │ │    │  │ CompactionStrategy │  │         │
+│  │  │ edit_file    │ │    │  │ MemorySystem       │  │         │
+│  │  │ grep/glob    │ │    │  └────────────────────┘  │         │
+│  │  │ bash         │ │    └──────────────────────────┘         │
+│  │  │ todo_write   │ │                                         │
+│  │  │ web_fetch    │ │                                         │
+│  │  │ web_search   │ │                                         │
+│  │  └──────────────┘ │                                         │
 │  └────────┬──────────┘                                         │
 │           │                                                     │
 │  ┌────────▼────────────────────────────────────────┐          │
-│  │        Code Knowledge Base (Rust + TS Bridge)     │          │
-│  │  ┌───────────┐  ┌──────────┐  ┌──────────────┐  │          │
-│  │  │ AST Index │  │ Full-Text│  │ Vector Index  │  │          │
-│  │  │(tree-sitter)│ │ (BM25)  │  │ (LanceDB)     │  │          │
-│  │  └───────────┘  └──────────┘  └──────────────┘  │          │
-│  └──────────────────────────────────────────────────┘          │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────┐          │
 │  │   Permission Pipeline  │  Session Manager         │          │
 │  │   (TypeScript)        │  (TypeScript + SQLite)   │          │
 │  └──────────────────────────────────────────────────┘          │
@@ -92,26 +87,27 @@
 ┌─────────────────────────▼──────────────────────────────────────┐
 │                    LLM Gateway (TypeScript)                      │
 │                                                                  │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌─────────────┐    │
-│  │  Claude  │  │  GPT-5   │  │  Gemini  │  │  Local/Ollama│   │
-│  └──────────┘  └──────────┘  └──────────┘  └─────────────┘    │
-│                                                                  │
-│  统一接口：Streaming │ Fallback │ Retry │ Rate Limit │ Billing  │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────┐    │
+│  │ Anthropic│  │  OpenAI  │  │ OpenAI-compat │   │
+│  │ (Claude) │  │  (GPT)   │  │ (DeepSeek等)  │   │
+│  └──────────┘  └──────────┘  └──────────────┘    │
+│                                                   │
+│  统一接口：Streaming │ Factory │ 未来: Retry/Fallback │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
 ### 1.2 为什么是这三层
 
-| 层 | 职责 | 语言 | 为什么独立 |
-|----|------|------|-----------|
-| **IDE Layer** | UI、交互、编辑体验 | TypeScript | VSCode 生态原生，必须同进程 |
-| **Agent Runtime** | 循环、工具、上下文、权限 | TypeScript | 逻辑密集，与 IDE 解耦可独立测试 |
-| **LLM Gateway** | 模型路由、Fallback、限流 | TypeScript | 模型无关，可独立扩缩 |
+| 层 | 职责 | 为什么独立 |
+|----|------|-----------|
+| **CLI / Plugin** | 交互界面（Ink TUI / VSCode Webview） | 纯展示和路由，不含 Agent 逻辑 |
+| **Agent Runtime** | 循环、工具、上下文、权限 | 可独立运行、独立测试 |
+| **LLM Gateway** | Provider 路由、流式调用 | 模型无关，可独立扩缩 |
 
 **关键原则**：
-1. IDE 层不包含 Agent 逻辑（只做展示和路由）
-2. Agent Runtime 不依赖 VSCode API（可独立运行、独立测试）
-3. 三层之间的通信协议是唯一的耦合点
+1. UI 层不包含 Agent 逻辑（只做展示和路由）
+2. Agent Runtime 不依赖任何 UI 框架
+3. 三层之间通过 AgentEvent 流通信
 
 ### 1.3 为什么不把 Agent Runtime 写成 VSCode Extension 的一部分
 
@@ -1117,40 +1113,50 @@ cangjie/
 
 ### 已完成
 
-**Phase 0：MVP（v0.1.0）**
+**Phase 0：MVP（v0.1.0）** ✅
 ```
-✅ Agent Loop + 5 工具 + CLI REPL + VSCode 插件骨架 + 权限流水线 + 会话持久化
-```
-
-**Phase 1：补齐基础（v0.2.0）**
-```
-✅ +4 工具 (glob/todo_write/web_fetch/web_search)
-✅ 多模型 Provider (Anthropic/OpenAI/compat)
-✅ 上下文压缩 summarize+truncate
-✅ 分层配置系统
+Agent Loop + 5 工具 + CLI REPL + VSCode 插件骨架 + 权限流水线 + 会话持久化
 ```
 
-**Phase 2：TUI 交互升级（v0.2.0）**
+**Phase 1：补齐基础（v0.2.0）** ✅
 ```
-✅ Ink (React TUI) 渲染层
-✅ 7 UI 组件 + use-agent-stream hook
-✅ 斜杠命令系统 (6 内置命令)
-✅ 双模式：TUI / 纯文本降级
++4 工具 + 多模型 Provider + 上下文压缩 + 分层配置
 ```
 
-### 规划
-
-**Phase 3：Agent 能力深度（v0.4.0）**
+**Phase 2：TUI 交互升级（v0.2.0）** ✅
 ```
-📋 会话检查点 + h2A 双缓冲
-📋 Model 容错（Retry/Fallback/限流）
-📋 子 Agent (Task) — 上下文隔离
-📋 MCP (stdio/SSE/HTTP) + Hooks + Skills
-📋 沙箱增强（命令注入检测 + 审计日志）
+Ink 渲染 + 7 组件 + 命令系统 + 权限确认 Y/A/N/D
+```
+
+---
+
+**Phase 3：Runtime 基础设施（v0.3.0）** 📋
+```
+会话管理：SQLite 持久化 + Checkpoint + SessionStats
+消息管理：Message 扩展 (id/metadata/parentId) + 三级压缩
+任务状态：TaskState 状态机 (planning→executing→verifying→done)
+日志系统：pino 模块分级 (agent/tool/llm/perm)
+记忆管理：四层结构 + Agent 自动生成 + 生命周期
+```
+
+**Phase 4：Agent 深度（v0.4.0）** 📋
+```
+异步消息队列：h2A 双缓冲
+子 Agent：Explore/Plan/Verify/Execute + 独立上下文
+MCP：stdio/SSE/HTTP + Tool 适配桥
+Hooks：tool.execute.before/after + session.created + file.changed
+Skills：SKILL.md 按需加载
+```
+
+**Phase 5：生产就绪（v0.5.0）** 📋
+```
+Model 容错：Retry + Fallback + Rate Limit + Usage 统计
+沙箱增强：命令注入检测 + 审计日志 (SQLite)
+全链路 Trace：Span 事件收集 + 会话结束 summary
+JetBrains 插件
 ```
 
 ### 远期暂缓
-
 ```
 ⏸️ LSP 工具、代码索引、远程执行
 ```
@@ -1311,10 +1317,9 @@ xcrun stapler staple Cangjie-0.5.0-arm64.dmg
 | 模块 | 学到的知识 |
 |------|-----------|
 | **Agent Loop** | 异步流程控制、Generator/AsyncGenerator、流式处理、状态机 |
-| **Tool System** | 插件架构、安全沙箱、子进程管理、权限模型 |
-| **Context Engineering** | Token 预算、文本压缩策略、Prompt 构建 |
-| **Code Intelligence** | BM25/倒排索引、向量检索/HNSW、tree-sitter AST、LSP 协议 |
-| **IPC** | JSON-RPC 2.0、Unix Socket、Protocol Buffers、流式协议 |
+| **Tool System** | 工具注册、权限流水线、Bun.spawn 进程管理 |
+| **Context Engineering** | Token 预算、多级压缩策略、Prompt 构建 |
+| **CLI / TUI** | Bun 运行时、Ink (React TUI)、终端渲染、键盘交互 |
 | **VSCode Extension** | Extension Host 进程模型、Webview 通信、Editor API |
 | **React in Webview** | 受限环境下的状态管理、虚拟 DOM diff、Tailwind 设计系统 |
 | **Rust + TypeScript** | napi-rs FFI、Native Addon 构建、跨语言内存管理 |
@@ -1324,6 +1329,118 @@ xcrun stapler staple Cangjie-0.5.0-arm64.dmg
 | **CI/CD** | GitHub Actions、自动化发布、版本管理 |
 
 ---
+
+## 15. Runtime 数据结构设计 ⚠️ 设计稿，Phase 3 实现
+
+### 15.1 会话管理
+
+```
+Session
+├── id: string
+├── workspace: string
+├── status: 'active' | 'paused' | 'completed' | 'aborted'
+├── createdAt / updatedAt
+│
+├── config: { provider, model, maxSteps, compactionStrategy }
+├── messages: Message[]
+├── checkpoints: Checkpoint[]
+│   └── { step, messageIndex, summary, createdAt }
+├── stats: { totalSteps, totalTokens, toolCalls, duration }
+└── decisions: { step, tool, args, decision, timestamp }[]
+```
+
+生命周期：create → active → save checkpoint(每N步) → complete/abort → archive
+持久化：当前 JSON 文件 → Phase 3 SQLite（增量写入）
+
+### 15.2 消息管理
+
+```
+Message
+├── id: string（新增）
+├── role: 'system' | 'user' | 'assistant' | 'tool'
+├── content: string
+├── toolCalls? / toolCallId?
+│
+├── metadata: { step, timestamp, tokenCount, compacted }
+└── parentId?: string（子 Agent 追溯）
+```
+
+消息分类：system prompt → project memory → conversation → compaction summary
+
+三级压缩：70% summarize 前30% → 85% summarize 前50% → 92% emergency compact + checkpoint
+
+### 15.3 子 Agent
+
+```
+SubAgent
+├── id, type: 'explore' | 'plan' | 'verify' | 'execute'
+├── parentSessionId, parentMessageId
+├── status: 'running' | 'completed' | 'failed'
+├── context: { messages, budget: { maxSteps, maxTokens } }
+├── tools: string[]（默认只读）
+└── result?: { summary, artifacts }
+```
+
+约束：独立上下文，默认只读，超时/失败不拖垮父 Agent
+
+### 15.4 任务执行状态
+
+```
+TaskState
+├── todos: { id, content, status, createdAt, completedAt }[]
+├── currentStep: number
+├── phase: 'planning' | 'executing' | 'verifying' | 'done'
+└── executionTrace: {
+      step, type: 'think'|'tool_call'|'tool_result'|'response',
+      detail, toolName?, duration?, tokenUsage?, timestamp
+    }[]
+```
+
+AgentEvent 流是实时通道，TaskState 是持久化快照
+
+### 15.5 日志
+
+```
+Logger: pino 结构化输出
+├── level: 'debug' | 'info' | 'warn' | 'error'
+├── modules: agent | tool | llm | perm
+└── output: stderr(开发) | ~/.cangjie/logs/(生产)
+```
+
+### 15.6 全链路 Trace
+
+```
+Trace
+├── traceId, sessionId
+├── startTime / endTime
+└── spans: {
+      spanId, parentSpanId?, type: 'llm_call'|'tool_exec'|'compaction'|'permission_check',
+      startTime, endTime?, status, metadata
+    }[]
+```
+
+### 15.7 记忆管理
+
+```
+记忆分层：
+  User Memory    (~/.cangjie/memory/)     手动维护，长期有效
+  Project Memory (.cangjie/memory/)       团队共享，版本控制
+  Session Memory (内存)                   当前对话，会话后可提取关键结论
+  Agent Memory   (~/.cangjie/memories/)   Agent 自动生成，跨会话积累
+
+Memory 结构：
+  { id, type, source, content: { title, body, tags },
+    context: { files?, tools?, keywords? },
+    meta: { createdAt, importance: 1-5, sourceSessionId? },
+    status: 'active' | 'archived' | 'superseded' }
+
+检索：Project/User Memory 全量注入 system prompt
+      Agent Memory 按关键词 grep 检索，按需加载
+```
+
+---
+
+*最后更新：2026-06-26*
 
 *最后更新：2026-06-07*
 *作者：Cangjie Team*
