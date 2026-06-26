@@ -13,10 +13,12 @@
 | 权限流水线 + 执行确认 | ✅ v0.2 |
 | 会话持久化 + Memory | ✅ v0.2 |
 | Ink TUI 渲染 + 命令系统 | ✅ v0.2 |
-| Runtime 数据结构（会话/消息/TaskState/日志/记忆） | 📋 Phase 3 | §15 |
-| 异步消息队列（h2A 双缓冲） | 📋 Phase 4 |
-| 子 Agent / MCP / Hooks / Skills | 📋 Phase 4 |
-| Model 容错 / 沙箱 / Trace / JetBrains | 📋 Phase 5 |
+| Runtime 数据结构（会话/消息/TaskState/日志/记忆） | ✅ v0.2 | §15 |
+| 异步消息队列（h2A 双缓冲） | ⏸️ 远期 |
+| 子 Agent / MCP / Hooks / Skills | ✅ v0.2 |
+| Model 容错 / 沙箱 / Trace | ✅ v0.2 |
+| VSCode 插件 | 🟡 v0.1 待同步 |
+| JetBrains 插件 | 📋 VSCode 稳定后跟进 |
 | LSP 工具 / 代码索引 | ⏸️ 远期 |
 
 ---
@@ -26,7 +28,7 @@
 做最好的 TUI Coding Agent。
 
 - **本期**：TUI CLI — 终端代码 Agent，极致追求实战可用性
-- **二期**：VSCode / JetBrains 插件
+- **二期**：VSCode 插件同步更新，稳定后跟进 JetBrains 插件
 - **不做**：桌面 App、Web、云端、预计算索引、多 Agent 编排
 
 竞品跟踪见 [competitors.md](competitors.md)。

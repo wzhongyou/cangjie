@@ -1,7 +1,6 @@
 /**
- * Cangjie Agent Loop — 模仿 Claude Code 的单线程主循环
+ * Cangjie Agent Loop
  *
- * 核心理念（来自 Claude Code 的教训）：
  * 1. Keep it simple — 一个 while 循环，不过度抽象
  * 2. 工具是 plain text in/out — 模型自己理解
  * 3. 上下文压缩是第一工程挑战
