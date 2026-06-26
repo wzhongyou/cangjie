@@ -26,6 +26,8 @@ export type AgentEvent =
   | { type: 'tool_call'; tool: string; args: Record<string, unknown> }
   | { type: 'tool_result'; tool: string; result: string; duration: number }
   | { type: 'response'; content: string }
+  | { type: 'plan'; todos: Array<{ id: string; content: string; status: string }> }
+  | { type: 'compact'; reason: string }
   | { type: 'error'; error: string }
   | { type: 'done'; steps: number }
   | { type: 'file_changed'; filePath: string; preContent: string; postContent: string };
@@ -98,6 +100,8 @@ export interface Tool {
 export type PermissionAction = 'allow' | 'deny' | 'ask';
 export type RiskLevel = 'readonly' | 'write' | 'execute' | 'network';
 
+export type LlmProvider = 'anthropic' | 'openai' | 'openai-compat';
+
 export interface PermissionDecision {
   action: PermissionAction;
   reason?: string;
@@ -116,7 +120,9 @@ export interface CangjieConfig {
   context: {
     maxHistoryTokens: number;
     compactionThreshold: number; // 0-1, 默认 0.85
+    compactionStrategy?: 'truncate' | 'summarize'; // 默认 'truncate'
   };
+  provider?: LlmProvider;
 }
 
 export interface PermissionRule {

@@ -1,12 +1,32 @@
 import type { Tool, ToolDefinition } from '@cangjie/shared';
-import { bashTool, editFileTool, grepTool, readFileTool, writeFileTool } from './builtin/index.js';
+import {
+  bashTool,
+  editFileTool,
+  globTool,
+  grepTool,
+  readFileTool,
+  todoWriteTool,
+  webFetchTool,
+  webSearchTool,
+  writeFileTool,
+} from './builtin/index.js';
 
 export class ToolRegistry {
   private tools = new Map<string, Tool>();
 
   constructor() {
     // 注册内置工具
-    for (const t of [readFileTool, grepTool, writeFileTool, editFileTool, bashTool]) {
+    for (const t of [
+      readFileTool,
+      grepTool,
+      globTool,
+      writeFileTool,
+      editFileTool,
+      todoWriteTool,
+      webFetchTool,
+      webSearchTool,
+      bashTool,
+    ]) {
       this.register(t);
     }
   }

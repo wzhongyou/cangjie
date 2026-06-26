@@ -1,51 +1,35 @@
 # Cangjie（仓颉）设计文档
 
-> **定位**：AI 原生代码智能平台 — 融合混合检索、RAG 与 Agent 能力，用于代码搜索、理解与自动化演进。
+> **做最好的 TUI Coding Agent**
 >
-> **对标**：Cursor 的 IDE 交互 × Claude Code 的 Agent 脑子 × 本地优先的代码知识库
->
-> **技术栈**：TypeScript 全栈主导，Rust 聚焦性能关键路径。工业级架构，每个决策讲清楚 WHY。
+> TypeScript + Bun + Ink | MIT | v0.2.0
+
+### 实现状态
+
+| 模块 | 状态 |
+|------|------|
+| Agent Loop + 9 工具 + 多模型 | ✅ v0.2 |
+| 上下文压缩 (summarize+truncate) | ✅ v0.2 |
+| 权限流水线 + 执行确认 | ✅ v0.2 |
+| 会话持久化 + Memory | ✅ v0.2 |
+| Ink TUI 渲染 + 命令系统 | ✅ v0.2 |
+| 会话协议 / 异步消息队列 | 📋 Phase 3 |
+| Model 容错（Retry/Fallback/限流） | 📋 Phase 3 |
+| 子 Agent / MCP / Hooks / Skills | 📋 Phase 3 |
+| 沙箱（命令注入检测/审计） | 📋 Phase 3 |
+| LSP 工具 / 代码索引 | ⏸️ 远期 |
 
 ---
 
-## 0. 调研结论：Cursor 和 Claude Code 的本质差异
+## 0. 定位
 
-### 0.1 核心差异矩阵
+做最好的 TUI Coding Agent。
 
-| 维度 | Cursor | Claude Code | 根源分析 |
-|------|--------|-------------|---------|
-| **Agent 自主性** | 单轮为主，Tab/Inline/单次Chat | 自主循环，长任务执行（10-100步+） | Cursor 的 Agent 是"辅助"，CC 的 Agent 是"替代" |
-| **工具调用深度** | 有限 IDE 操作（补全、跳转、重构） | Bash + File + Grep + Task + Web 全栈 | CC 暴露了全套 OS 能力给 Agent |
-| **上下文策略** | RAG embedding + 当前文件 + 少量关联文件 | 全项目扫描（grep/glob） + Memory 文件 + 上下文压缩 | CC 依赖模型"自己去找"，Cursor 依赖"提前找好" |
-| **规划能力** | 无显式规划（单步响应） | Plan → Execute → Verify 隐式循环 | CC 的 TodoWrite 工具强制规划 |
-| **IDE 体验** | Tab 补全、Inline Edit、Diff Preview | 终端纯文本 + Markdown | Cursor 胜在图形化交互 |
-| **响应延迟** | Tab < 150ms / Chat < 2s | 秒级首 Token | Cursor 用三级缓存 + 小模型优化 |
-| **执行模型** | 同步（用户触发 → 响应） | 异步（Agent 自主循环，用户可中途介入） | CC 有 h2A 双缓冲队列支持实时干预 |
-| **代码搜索** | 语义向量 + Grep 混合 | 仅 Grep/Glob（刻意不用向量） | 哲学差异：统计匹配 vs 精确匹配 |
-| **文件修改** | 直接写入（含 Diff 预览） | Diff-first（先生成 Diff，用户 Accept/Reject） | CC 的 Edit 工具是外科手术式的 |
-| **隐私模型** | 索引云端化（源码不上传，但 embedding 上传） | 完全本地（API 直连，无中间服务器） | Cursor 有中间服务，CC 无 |
+- **本期**：TUI CLI — 终端代码 Agent，极致追求实战可用性
+- **二期**：VSCode / JetBrains 插件
+- **不做**：桌面 App、Web、云端、预计算索引、多 Agent 编排
 
-### 0.2 两种设计哲学的碰撞
-
-```
-Cursor 哲学: "给用户最好的答案，尽可能快"
-  → 预计算（索引）+ 预加载（RAG）+ 预缓存（三级缓存）
-  → Agent 是最后一步，不是第一步
-  → 技术栈：Rust 重计算 + Cloud GPU + 复杂基础设施
-
-Claude Code 哲学: "给模型最好的工具，然后让开"
-  → 不预计算，模型自己 grep/read/think
-  → Agent 是第一步，一切围绕 Agent Loop 构建
-  → 技术栈：TypeScript 单体 + 简单基础设施
-```
-
-### 0.3 Cangjie 的融合策略
-
-```
-Cangjie = Cursor 的搜索预计算 + Claude Code 的 Agent 自主性 + Cursor 的 IDE 图形体验
-```
-
-**关键洞察**：两者不是互斥的。可以让 Agent 同时拥有"预计算的知识库"和"实时探索的工具"，在同一个 Agent Loop 中自主选择最快的路径。
+竞品跟踪见 [competitors.md](competitors.md)。
 
 ---
 
@@ -153,7 +137,6 @@ export function activate(context: vscode.ExtensionContext) {
 - 未来可以云化部署（Agent Runtime 作为独立服务）
 
 ---
-
 ## 2. 技术栈（TypeScript-first，工业级）
 
 ### 2.1 完整技术栈矩阵
@@ -218,8 +201,7 @@ Rust 代码量预估：< 5% 总体代码量
 ```
 
 ---
-
-## 3. Agent 系统设计（对标 Claude Code 的自主性）
+## 3. Agent 系统设计
 
 ### 3.1 Claude Code Agent Loop 的本质
 
@@ -568,7 +550,6 @@ TodoWrite         →     todo_write           同
 4. **Grep > Embedding**（在 Agent 场景） — Agent 自己 grep 比预先 RAG 更准确（不会遗漏/过时）。
 
 ---
-
 ## 4. 代码智能系统（RAG + 混合搜索）
 
 ### 4.1 两种搜索范式
@@ -681,7 +662,6 @@ Workspace Changed (onDidChangeWorkspaceFolders)
 **关键设计**：Agent 有所有工具的访问权，自己决定用什么。这是 Claude Code 的核心哲学——不给模型预选结果，而是给它工具让它自己找。
 
 ---
-
 ## 5. 上下文工程（Context Engineering）
 
 ### 5.1 这是 Agent 工程的第一难题
@@ -779,195 +759,61 @@ Project Memory（项目级，.cangjie/memory/）
   │ 类似 Claude Code 的 CLAUDE.md │
   └──────────────────────────────┘
 
-Knowledge Memory（代码知识库，自动维护）
-  ┌──────────────────────────────┐
-  │ 代码索引 + 符号图 + 向量库   │ → 随代码变更自动更新
-  │ 可重建，不需要手动维护        │
-  └──────────────────────────────┘
-
 User Memory（用户级，~/.cangjie/）
   ┌──────────────────────────────┐
-  │ 跨项目偏好、常用工具配置     │ → 类似 Claude Code 的全局 CLAUDE.md
+  │ 跨项目偏好、常用工具配置     │ → 每次会话自动加载
   │ 语言、风格、权限偏好         │
   └──────────────────────────────┘
 ```
 
----
+### 5.5 会话协议
 
-## 6. IDE UX 层设计（对标 Cursor 体验）
-
-### 6.1 Cursor vs Claude Code 的 UX 差距
-
-这是 Cangjie 最大的差异化机会——把 Claude Code 的 Agent 能力装进 Cursor 的图形界面：
-
-| 操作 | Claude Code (终端) | Cursor | Cangjie (目标) |
-|------|-------------------|--------|---------------|
-| **代码修改** | Markdown diff 文本 | Inline Diff + Accept/Reject 按钮 | **Inline Diff + 逐块审查** |
-| **搜索代码** | Grep 终端输出 | 侧边栏结果列表 + 点击跳转 | **混合搜索面板 + 实时预览** |
-| **Agent 状态** | "Thinking..." 旋转 | 无 Agent 概念 | **可视化 Plan→Execute→Verify 流程** |
-| **文件操作** | 终端文字 | 文件树 + Tab | **文件树 + 实时同步** |
-| **子任务** | 不可见 | 无 | **子 Agent 状态树 + 进度** |
-| **上下文** | 不可见 | 不可见 | **Token 用量仪表盘** |
-| **中断/介入** | Ctrl+C 全停 | 无 | **优雅中断 + 部分成果保留** |
-
-### 6.2 交互通道
+Agent 与 UI 层的通信通过 `AsyncGenerator<AgentEvent>` 流。
 
 ```
-┌──────────────────────────────────────────────────┐
-│              Cangjie VSCode Extension              │
-│                                                  │
-│  ① Chat Panel（对话面板）                          │
-│     └─ 主对话界面，流式 Markdown，Agent 步骤可视化  │
-│                                                  │
-│  ② Inline Edit（行内编辑）                         │
-│     └─ Cmd+K 触发，选中区域重构，Ghost Text 预览    │
-│                                                  │
-│  ③ Diff Review（差异审查）                         │
-│     └─ 侧边栏，逐文件 diff，Accept/Reject/Split    │
-│                                                  │
-│  ④ Agent Panel（Agent 面板）                      │
-│     └─ 实时显示 Agent 的 Plan / Current Step / Todo │
-│                                                  │
-│  ⑤ Search Panel（搜索面板）                        │
-│     └─ 混合搜索结果，代码预览，一键跳转             │
-│                                                  │
-│  ⑥ Terminal Panel（终端面板）                      │
-│     └─ Agent 可以操作终端，用户可见可干预           │
-└──────────────────────────────────────────────────┘
+AgentEvent 类型:
+  thinking    流式思考文字（逐 token）
+  tool_call   工具调用请求
+  tool_result 工具执行结果
+  plan        任务计划更新
+  response    最终回复
+  compact     上下文压缩通知
+  error       错误
+  done        完成
 ```
 
-### 6.3 状态管理架构（Zustand）
+**当前实现**：AgentEvent 流完整。会话持久化通过 JSON 文件，跨轮次复用 `agent.lastMessages`。
 
-```typescript
-// packages/ide-extension/src/stores/agent-store.ts
+**待实现**：
+- 会话检查点（Checkpoint）：长任务中断后从中间步数恢复
+- 暂停/恢复信号：Ctrl+C 暂停等待新指令而非终止
 
-import { create } from 'zustand';
-import type { AgentEvent } from '@cangjie/agent-runtime';
+### 5.6 异步消息队列（h2A 双缓冲）
 
-/**
- * Agent 状态管理
- * 
- * 设计要点：
- * 1. 单一 Store（不是多个），因为 Agent 状态是全局的
- * 2. 不可变更新（immer 集成）
- * 3. 与 Agent Runtime 通过 AsyncGenerator 事件流通信
- * 
- * 学习要点：
- * - Zustand 的不可变更新模式
- * - Event-driven state 的设计
- * - Webview ↔ Extension Host 的状态同步
- */
-interface AgentState {
-  // 会话
-  sessionId: string | null;
-  messages: ChatMessage[];
-  isStreaming: boolean;
+Agent 执行过程中允许用户异步注入新消息。
 
-  // Agent 执行状态
-  currentStep: number;
-  plan: PlanStep[];
-  todoItems: TodoItem[];
-  toolCalls: ToolCallStatus[];
-
-  // UI 状态
-  activePanel: 'chat' | 'agent' | 'search' | 'diff';
-  diffChanges: FileChange[];
-  
-  // Actions
-  sendMessage: (content: string) => Promise<void>;
-  abortAgent: () => void;
-  acceptDiff: (changeId: string) => void;
-  rejectDiff: (changeId: string) => void;
-  updatePlanStep: (stepId: string, status: PlanStep['status']) => void;
-}
-
-export const useAgentStore = create<AgentState>((set, get) => ({
-  // ... implementation
-}));
 ```
+Input Buffer           Agent Loop           Output Buffer
+(用户随时写入)    ←   每轮前 drain()   →   (UI 按帧率消费)
+```
+
+**当前实现**：AbortSignal 支持硬中断（Ctrl+C 全停）。双缓冲未实现。
+
+### 5.7 Model 管理
+
+| 能力 | 状态 |
+|------|------|
+| 多 Provider 切换 (anthropic/openai/compat) | ✅ |
+| 重试（API 错误自动重试，指数退避） | 📋 Phase 3 |
+| 降级（主模型不可用自动切备用） | 📋 Phase 3 |
+| 限流（请求队列 + token 桶） | 📋 Phase 3 |
+| Usage 统计（会话级 token 累计） | 🟡 仅 StreamEvent 带 usage |
 
 ---
 
-## 7. 数据流（一次完整的 Agent 请求）
+## 6. 子 Agent 与多 Agent 编排 ⚠️ 设计稿，Phase 3 实现
 
-```
-User: "@cmd+k 修复 auth.ts 里的登录 Bug，写测试验证"
-              │
-              ▼
-┌─────────────────────────────────────────────────┐
-│ ① UX Coordinator：识别为 Agent 请求              │
-│   路由到 Agent Channel（不是 Tab Complete 快通道）│
-└──────────────────────┬──────────────────────────┘
-                       │ JSON-RPC
-                       ▼
-┌──────────────────────────────────────────────────┐
-│ ② Context Engine：收集上下文                      │
-│                                                  │
-│   1. 当前打开文件（auth.ts）—— 编辑器状态           │
-│   2. search_code("login bug auth") —— 混合搜索     │
-│   3. lsp_find_refs("login") —— LSP 引用            │
-│   4. read_file("auth.test.ts") —— 已有测试          │
-│   5. read_file(".cangjie/memory/architecture.md")  │
-│   6. git diff —— 最近的变更                        │
-│                                                  │
-│   结果：40K Token 的精选上下文                      │
-└──────────────────────┬───────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────────┐
-│ ③ Agent Runtime：启动 Agent Loop                  │
-│                                                  │
-│   Step 1: Model → Plan                            │
-│     "我需要：① 搜索 login 相关代码找到 Bug         │
-│              ② 分析根因                           │
-│              ③ 修复                               │
-│              ④ 写/跑测试验证"                      │
-│     → todo_write(items)                           │
-│                                                  │
-│   Step 2: Model → Tool Calls                      │
-│     grep("login", auth.ts) → 找到 login() 函数     │
-│     grep("token refresh", auth.ts) → 定位可疑代码   │
-│     read_file(auth.ts#L120-L150) → 读取 Bug 区域    │
-│                                                  │
-│   Step 3: Model → Analysis                        │
-│     "发现 token 刷新逻辑的时间比较使用了            │
-│      Date.now() 而不是服务器时间，导致时区问题"      │
-│                                                  │
-│   Step 4: Model → Tool Calls                      │
-│     edit_file(auth.ts, diff: ...) → 修复           │
-│     write_file(auth.test.ts, ...) → 写测试          │
-│                                                  │
-│   Step 5: Model → Tool Calls                      │
-│     bash("npm test -- auth.test.ts") → 测试通过 ✓   │
-│     todo_write(update: all done)                   │
-│                                                  │
-│   Step 6: Model → Response                        │
-│     "修复完成。根因是... 变更：..."                  │
-│                                                  │
-└──────────────────────┬───────────────────────────┘
-                       │ AgentEvent stream
-                       ▼
-┌──────────────────────────────────────────────────┐
-│ ④ UX 展示                                        │
-│                                                  │
-│   Chat Panel: Agent 思考过程和总结                 │
-│   Diff Review: 显示 auth.ts 的修改                 │
-│     ┌────────────────────────────────────┐       │
-│     │ @@ -123,5 +123,5 @@                │       │
-│     │ - const now = Date.now()           │       │
-│     │ + const now = serverTime.now()     │       │
-│     │                                    │       │
-│     │ [Accept] [Reject]                  │       │
-│     └────────────────────────────────────┘       │
-│   Agent Panel: 5/5 steps 完成 ✓                   │
-└──────────────────────────────────────────────────┘
-```
-
----
-
-## 8. 子 Agent 与多 Agent 编排
-
-### 8.1 Claude Code 的子 Agent 教训
+### 6.1 Claude Code 的子 Agent 教训
 
 Claude Code 最初设计子 Agent 是为了并行工作，但发现子 Agent 更大的价值是：
 
@@ -975,7 +821,7 @@ Claude Code 最初设计子 Agent 是为了并行工作，但发现子 Agent 更
 2. **角色专门化**：Explore Agent / Plan Agent / Verify Agent 各有专门的工具集
 3. **独立权限**：子 Agent 只能读（默认），写操作需要父 Agent 授权
 
-### 8.2 Cangjie 的子 Agent 类型
+### 6.2 Cangjie 的子 Agent 类型
 
 ```typescript
 // packages/agent-runtime/src/sub-agents/types.ts
@@ -1005,10 +851,9 @@ export interface SubAgentConfig {
 ```
 
 ---
+## 7. 插件与可扩展性
 
-## 9. 插件与可扩展性
-
-### 9.1 扩展体系（从低到高上下文成本）
+### 7.1 扩展体系（从低到高上下文成本）
 
 | 机制 | 上下文成本 | 实现方式 | 对标 |
 |------|-----------|---------|------|
@@ -1018,7 +863,7 @@ export interface SubAgentConfig {
 | **MCP Servers** | 高 | 标准 MCP 协议接入外部工具 | Claude Code MCP |
 | **Plugins** | 中 | Command + Skill + MCP 的组合包 | VS Code Extension |
 
-### 9.2 LSP 作为一等工具（Cangjie 差异化）
+### 7.2 LSP 作为一等工具（Cangjie 差异化）
 
 ```
 传统 Agent:         Cangjie Agent:
@@ -1037,10 +882,29 @@ export interface SubAgentConfig {
 **关键**：Agent 可以直接调 LSP 获取代码智能，不需要"猜测"符号位置。这比 Cursor 和 Claude Code 都更进一步——两者都没有让 Agent 主动调用 LSP。
 
 ---
+## 8. 权限与安全
 
-## 10. 权限与安全
+### 8.1 执行确认机制
 
-### 10.1 6 层防御（参考 Claude Code 模型）
+不是所有 Action 都自动执行。按风险等级决定是否需要用户确认。
+
+| 风险等级 | 工具 | 策略 | 确认信息 |
+|---------|------|------|---------|
+| `readonly` | read_file, grep, glob, todo_write | 自动通过 | — |
+| `write` | write_file, edit_file | **必须确认** | 文件路径 + 内容预览 / diff |
+| `execute` | bash | **必须确认** | 完整命令 + 超时 |
+| `network` | web_fetch, web_search | **必须确认** | URL |
+
+**决策选项**：`Y` 允许本次 / `A` 本次对话始终允许 / `N` 拒绝 / `D` 本次对话始终拒绝
+
+**会话记忆**：A/D 记录到会话级规则，本次对话内不再问。`--yes` 跳过所有确认。
+
+**确认流程**：
+```
+Agent Loop → Permission Pipeline → risk=needAsk? → TUI 弹窗展示详情 → 用户选择 → allow/deny
+```
+
+### 8.2 六层防御
 
 ```
 Tool Call 到达
@@ -1073,7 +937,7 @@ Layer 6: 审计日志
   └─ 支持事后审查和回滚
 ```
 
-### 10.2 权限是不可绕过的代码路径
+### 8.3 权限是不可绕过的代码路径
 
 ```typescript
 // packages/agent-runtime/src/permission/pipeline.ts
@@ -1112,59 +976,7 @@ export class PermissionPipeline implements PermissionChecker {
 ```
 
 ---
-
-## 11. IPC 通信协议
-
-### 11.1 VSCode Extension ↔ Agent Runtime
-
-```
-┌──────────────────────┐          ┌──────────────────────┐
-│  VSCode Extension    │ JSON-RPC │  Agent Runtime       │
-│  (Extension Host)    │◄────────►│  (Child Process)     │
-│                      │  Unix    │                      │
-│  - UI / Webview      │  Socket  │  - Agent Loop        │
-│  - Editor API        │          │  - Tool Execution    │
-│  - File Watcher      │          │  - Context Manager   │
-└──────────────────────┘          └──────────────────────┘
-```
-
-```typescript
-// packages/ipc/src/protocol.ts
-
-/**
- * Cangjie IPC 协议定义（JSON-RPC 2.0）
- * 
- * 为什么用 JSON-RPC 而不是 gRPC/tRPC：
- * 1. JSON-RPC 是无依赖的标准，任何语言都能实现
- * 2. Unix Socket 保证性能（本地进程通信 <1ms 延迟）
- * 3. 简单：只有 request/notification/response 三种消息
- * 
- * 学习要点：
- * - JSON-RPC 2.0 规范
- * - Unix Socket vs HTTP 的选择
- * - 流式传输的 NDJSON 模式
- */
-export interface JsonRpcRequest {
-  jsonrpc: '2.0';
-  id: string | number;
-  method: string;
-  params?: unknown;
-}
-
-export interface JsonRpcResponse {
-  jsonrpc: '2.0';
-  id: string | number;
-  result?: unknown;
-  error?: { code: number; message: string; data?: unknown };
-}
-
-// Agent 事件流使用 NDJSON（Newline-Delimited JSON）
-// 每个 AgentEvent 序列化为一行 JSON，通过 Unix Socket 流式传输
-```
-
----
-
-## 12. 项目结构（Monorepo）
+## 9. 项目结构（Monorepo）
 
 ```
 cangjie/
@@ -1301,112 +1113,95 @@ cangjie/
 ```
 
 ---
+## 10. 开发路线图
 
-## 13. 开发路线图
+### 已完成
 
-### Phase 1：MVP（4 周）— "能对话的 VSCode 插件"
-
+**Phase 0：MVP（v0.1.0）**
 ```
-Week 1-2: 基础设施搭建
-  - pnpm monorepo 初始化
-  - VSCode Extension 骨架（extension.ts + Webview）
-  - packages/shared + packages/ipc 协议定义
-  - LLM 接入（Claude API streaming）
-
-Week 3-4: 基础 Agent + Chat
-  - packages/agent-runtime: Agent Loop 核心
-  - 首批工具：read_file / grep / glob / write_file / edit_file
-  - Chat Panel（React + Markdown 渲染）
-  - 流式输出
+✅ Agent Loop + 5 工具 + CLI REPL + VSCode 插件骨架 + 权限流水线 + 会话持久化
 ```
 
-### Phase 2：Agent Core（4 周）— "能自主执行的 Agent"
-
+**Phase 1：补齐基础（v0.2.0）**
 ```
-Week 5-6: 完整 Agent 能力
-  - Tool System 完整实现（bash / task / web_search / todo_write）
-  - Permission Pipeline
-  - Context Manager（Token 预算 + 压缩）
-
-Week 7-8: IDE 体验
-  - Diff Review 面板（逐文件，Accept/Reject）
-  - Agent Panel（Plan / Steps / Progress 可视化）
-  - 子 Agent 支持
+✅ +4 工具 (glob/todo_write/web_fetch/web_search)
+✅ 多模型 Provider (Anthropic/OpenAI/compat)
+✅ 上下文压缩 summarize+truncate
+✅ 分层配置系统
 ```
 
-### Phase 3：Code Intelligence（4 周）— "真正理解代码"
-
+**Phase 2：TUI 交互升级（v0.2.0）**
 ```
-Week 9-10: 代码解析 + 全文索引
-  - Rust native addon: tree-sitter 多语言解析 + AST 索引
-  - Rust native addon: BM25 全文索引
-  - 增量索引（Merkle Tree）
-
-Week 11-12: 语义搜索
-  - LanceDB 集成 + 向量嵌入（本地 ONNX）
-  - 混合搜索 + RRF 重排
-  - Search Panel UI
+✅ Ink (React TUI) 渲染层
+✅ 7 UI 组件 + use-agent-stream hook
+✅ 斜杠命令系统 (6 内置命令)
+✅ 双模式：TUI / 纯文本降级
 ```
 
-### Phase 4：IDE 深度集成（4 周）— "Cursor 级体验"
+### 规划
 
+**Phase 3：Agent 能力深度（v0.4.0）**
 ```
-Week 13-14: 交互增强
-  - Tab 内联补全（Ghost Text + <500ms）
-  - Inline Edit (Cmd+K)
-  - LSP 作为 Agent 工具
-
-Week 15-16: 记忆 + 打磨
-  - Memory 系统（.cangjie/memory/）
-  - Project Context 自动构建
-  - 性能优化 + 错误恢复
+📋 会话检查点 + h2A 双缓冲
+📋 Model 容错（Retry/Fallback/限流）
+📋 子 Agent (Task) — 上下文隔离
+📋 MCP (stdio/SSE/HTTP) + Hooks + Skills
+📋 沙箱增强（命令注入检测 + 审计日志）
 ```
 
-### Phase 5：Scale & 开源（持续）
+### 远期暂缓
 
 ```
-  - MCP Server 支持
-  - Plugin 体系
-  - 多模型适配
-  - 开源社区运营
-  - 文档 + 官网
+⏸️ LSP 工具、代码索引、远程执行
 ```
 
 ---
 
-## 14. 关键设计决策记录
+## 11. 关键设计决策记录
 
-### 14.1 为什么 TypeScript 主导而不是 Go
+### 11.1 为什么 TypeScript + Bun
 
-- **学习价值**：TS 生态是前端/全栈工程师的母语，降低贡献门槛
-- **工业证据**：Claude Code（TS 单体）证明了 TS 能做生产级 Agent
-- **VSCode 生态**：Extension 必须用 TS/JS，用 Go 需要额外的 IPC 层
-- **Rust 的边界**：只在性能关键路径（搜索、解析）用 Rust，代码量 < 5%
+- TypeScript 全栈统一，CLI 和插件共享同一套代码
+- Bun 启动 ~50ms，`bun build --compile` 单二进制分发
+- Claude Code 用 TS 证明了 Agent Runtime 的可行性
 
-### 14.2 为什么不 Fork VS Code 做独立 IDE
+### 11.2 为什么不 Fork VS Code 做独立 IDE
 
-Cursor Fork VS Code 是 2021 年的选择。2026 年更好的策略：
-- 不需要维护编辑器 Fork（巨大的技术债务）
-- Extension 可同时支持 VSCode / Cursor / Windsurf / Code OSS
-- Agent Runtime 独立进程，未来可云化部署
-- 如果未来需要独立 IDE，Agent Runtime 可以直接嵌入
+- Extension 即可覆盖 VSCode / Cursor / Windsurf
+- Agent Runtime 独立进程，CLI 和插件都是它的前端
+- 维护编辑器 Fork 是巨大的技术债务
 
-### 14.3 为什么本地优先而不是云端
+### 11.3 为什么本地优先
 
-- **Privacy-first**：代码是公司核心资产，不应上传
-- **低延迟**：本地搜索 <100ms，云端搜索 >200ms（网络延迟）
-- **离线可用**：Agent 应该在没有网络时也能工作（至少部分）
-- **Cursor 的教训**：Cursor 把索引放云端已经引发大量隐私争议
+- 代码是核心资产，不应上传
+- 本地执行延迟最低
+- API 直连，无中间服务
 
-### 14.4 为什么混合搜索而不是纯向量搜索
+### 11.4 为什么不用预计算索引
 
-- Claude Code 只用 Grep——模型用 Grep 比 RAG 更准确（因为模型知道自己在找什么）
-- Cursor 用 RAG——预计算使响应更快
-- Cangjie 混合：给 Agent 所有工具，让它自己选择。快速路径用 BM25/Grep，语义需求用向量。
+- Agent 自己 grep 比 RAG 更准确
+- 不维护额外的索引系统，降低复杂度
+
+### 11.5 为什么先做 CLI
+
+- CLI 是 Agent 最自然的交互形态
+- CLI 用户是早期采用者，验证核心价值最快
+- Agent Runtime 不依赖 UI 层，CLI 打磨好后插件自然受益
 
 ---
 
-## 15. 核心指标
+## 12. 核心指标
+
+| 指标 | v0.2 当前 | v0.4 目标 |
+|------|----------|----------|
+| 工具数量 | 9 | 14+ |
+| 模型支持 | 3 类 Provider | 3 类 Provider |
+| 上下文压缩 | summarize + truncate | 可靠压缩 |
+| CLI 启动时间 | < 500ms | < 100ms (Bun) |
+| Agent 任务完成率 | 未测量 | > 70% |
+| TUI 体验 | Ink 渲染 | 持续打磨 |
+
+---
 
 | 指标 | MVP 目标 | 理想态目标 | 测量方法 |
 |------|---------|-----------|---------|
@@ -1420,31 +1215,9 @@ Cursor Fork VS Code 是 2021 年的选择。2026 年更好的策略：
 | 扩展启动时间 | < 1s | < 500ms | cold start |
 
 ---
+## 13. 发布与交付
 
-## 16. 对标总结
-
-```
-                   Cursor    Claude Code   Cangjie (目标)
-─────────────────────────────────────────────────────
-IDE 体验            ★★★★★       ★★☆☆☆        ★★★★★
-Agent 自主性        ★★★☆☆       ★★★★★        ★★★★★
-代码理解（搜索）     ★★★★★       ★★★☆☆        ★★★★★
-上下文工程           ★★★★☆       ★★★★★        ★★★★★
-可扩展性             ★★★☆☆       ★★★★★        ★★★★★
-权限安全             ★★★☆☆       ★★★★★        ★★★★★
-本地优先/隐私        ★★★★☆       ★★★★★        ★★★★★
-多模型支持           ★★★☆☆       ★★★☆☆        ★★★★★
-开源                 ✗           ✗             ★★★★★
-─────────────────────────────────────────────────────
-```
-
-**目标**：在每一行不低于两者中的最高分。在 IDE 体验上对标 Cursor，在 Agent 能力上对标 Claude Code，在搜索上超越两者，并且**开源**。
-
----
-
-## 17. 发布与交付
-
-### 17.1 阶段一：VSCode 插件发布
+### 13.1 阶段一：VSCode 插件发布
 
 ```bash
 # 1. 安装发布工具
@@ -1503,7 +1276,7 @@ jobs:
       - run: pnpm -C packages/vscode-extension vsce publish -p ${{ secrets.VSCE_TOKEN }}
 ```
 
-### 17.2 阶段二：独立桌面 App 发布（macOS / Windows / Linux）
+### 13.2 阶段二：独立桌面 App 发布（macOS / Windows / Linux）
 
 独立 App 使用 Electron + Monaco，发布用 electron-builder：
 
@@ -1533,8 +1306,7 @@ xcrun stapler staple Cangjie-0.5.0-arm64.dmg
 ```
 
 ---
-
-## 18. 学习路径（跟着这个项目你能学到什么）
+## 14. 学习路径（跟着这个项目你能学到什么）
 
 | 模块 | 学到的知识 |
 |------|-----------|

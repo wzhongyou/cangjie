@@ -13,11 +13,15 @@
   },
   "scripts": {
     "build": "tsc",
+    "build:binary": "bun build ./dist/main.js --compile --outfile ../cj",
     "dev": "tsc --watch",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "@cangjie/core": "workspace:*",
-    "@cangjie/shared": "workspace:*"
+    "@cangjie/shared": "workspace:*",
+    "@types/react": "^19.2.17",
+    "ink": "^7.1.0",
+    "react": "^19.2.7"
   }
 }

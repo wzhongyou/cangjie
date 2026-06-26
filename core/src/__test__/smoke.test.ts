@@ -4,11 +4,18 @@
  * pnpm test（或 pnpm -C core test）
  */
 
+import * as fs from 'node:fs';
 import type { LlmRequest, LlmResponse, StreamEvent } from '@cangjie/shared';
 import { describe, expect, it } from 'vitest';
 import { CangjieAgent } from '../agent-loop.js';
 import type { LlmClient } from '../llm/client.js';
 import { ToolRegistry } from '../tools/registry.js';
+
+// 确保测试工作区存在
+const TEST_WORKSPACE = process.cwd();
+if (!fs.existsSync('/tmp/test')) {
+  fs.mkdirSync('/tmp/test', { recursive: true });
+}
 
 // 模拟 LLM 客户端（不实际调用 API）
 function createMockLlm(): LlmClient {
@@ -159,11 +166,19 @@ describe('ToolRegistry', () => {
   it('内置工具已注册', () => {
     const tools = new ToolRegistry();
     const names = tools.list();
+    // 原有工具
     expect(names).toContain('read_file');
     expect(names).toContain('grep');
     expect(names).toContain('write_file');
     expect(names).toContain('edit_file');
     expect(names).toContain('bash');
+    // Phase 1 新增工具
+    expect(names).toContain('glob');
+    expect(names).toContain('todo_write');
+    expect(names).toContain('web_fetch');
+    expect(names).toContain('web_search');
+    // 总共 9 个内置工具
+    expect(names.length).toBe(9);
   });
 });
 
@@ -186,5 +201,54 @@ describe('Builtin Tools', () => {
       { workspaceRoot: root, sessionId: 't', signal: new AbortController().signal },
     );
     expect(result.content.length).toBeGreaterThan(0);
+  });
+
+  it('glob 查找 TypeScript 文件', async () => {
+    const { globTool } = await import('../tools/builtin/glob.js');
+    const root = process.cwd();
+    const result = await globTool.execute(
+      { pattern: '**/*.ts', path: 'src' },
+      { workspaceRoot: root, sessionId: 't', signal: new AbortController().signal },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.content).toContain('.ts');
+  });
+
+  it('glob 列出目录', async () => {
+    const { globTool } = await import('../tools/builtin/glob.js');
+    const root = process.cwd();
+    const result = await globTool.execute(
+      { pattern: '.' },
+      { workspaceRoot: root, sessionId: 't', signal: new AbortController().signal },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.content.length).toBeGreaterThan(0);
+  });
+
+  it('todo_write 管理任务清单', async () => {
+    const { todoWriteTool, getCurrentTodos } = await import('../tools/builtin/todo-write.js');
+    const result = await todoWriteTool.execute(
+      {
+        todos: [
+          { id: '1', content: '搜索相关代码', status: 'completed' },
+          { id: '2', content: '修复 bug', status: 'in_progress' },
+          { id: '3', content: '写测试', status: 'pending' },
+        ],
+      },
+      { workspaceRoot: '/tmp', sessionId: 't', signal: new AbortController().signal },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.content).toContain('任务清单已更新');
+    expect(result.content).toContain('已完成');
+    expect(getCurrentTodos()).toHaveLength(3);
+  });
+
+  it('todo_write 无效参数报错', async () => {
+    const { todoWriteTool } = await import('../tools/builtin/todo-write.js');
+    const result = await todoWriteTool.execute(
+      { todos: [{ id: '1', content: 'test', status: 'invalid' }] },
+      { workspaceRoot: '/tmp', sessionId: 't', signal: new AbortController().signal },
+    );
+    expect(result.error).toBe('invalid_args');
   });
 });

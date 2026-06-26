@@ -7,10 +7,13 @@
  */
 
 import type { Message } from '@cangjie/shared';
+import type { LlmClient } from '../llm/client.js';
+import { summarizeMessages, truncateToolResults } from './compaction.js';
 
 export interface ContextConfig {
   maxHistoryTokens: number;
   compactionThreshold: number; // 0-1
+  compactionStrategy?: 'truncate' | 'summarize';
 }
 
 export class ContextManager {
@@ -35,18 +38,60 @@ export class ContextManager {
   }
 
   /**
-   * 检查是否需要压缩，如需要则返回裁剪后的消息列表。
-   * 裁剪策略：丢掉最早的工具调用结果，保留最近的上下文。
+   * 检查是否需要压缩，返回裁剪后的消息数量。
+   *
+   * 策略（由 compactionStrategy 控制）：
+   * - truncate: 保留后 60% 消息（当前默认）
+   * - summarize: 用 LLM 总结前 50% 消息
+   *
+   * 返回裁剪后应保留的消息数量（用于 messages.length = ...）。
    */
   maybeCompact(messages: Message[]): number {
     const tokens = this.estimateTokens(messages);
-    if (tokens < this.config.maxHistoryTokens * this.config.compactionThreshold) {
+    const threshold = this.config.maxHistoryTokens * this.config.compactionThreshold;
+
+    if (tokens < threshold) {
       return messages.length; // 无需压缩
     }
 
     // 简单策略：保留后 60% 消息
     const keepCount = Math.floor(messages.length * 0.6);
-    // 确保至少保留 system prompt + 最新几轮
     return Math.max(4, keepCount);
+  }
+
+  /**
+   * 带 LLM 摘要的压缩（用于 summarize 策略）。
+   * 在 agent-loop 中调用，替换早期消息为摘要。
+   *
+   * 返回压缩后的消息列表。
+   */
+  async compactWithSummary(messages: Message[], llm: LlmClient): Promise<Message[]> {
+    const tokens = this.estimateTokens(messages);
+    const threshold = this.config.maxHistoryTokens * this.config.compactionThreshold;
+
+    if (tokens < threshold) {
+      return messages;
+    }
+
+    // Token > 85%: 总结前 50% 消息
+    if (tokens > this.config.maxHistoryTokens * 0.85) {
+      const summarized = await summarizeMessages(messages, llm, Math.floor(messages.length * 0.5));
+      return summarized;
+    }
+
+    // Token > 70%: 总结前 30% 消息
+    if (tokens > this.config.maxHistoryTokens * 0.7) {
+      const summarized = await summarizeMessages(messages, llm, Math.floor(messages.length * 0.7));
+      return summarized;
+    }
+
+    return messages;
+  }
+
+  /**
+   * Token > 92% 的紧急压缩：激进截断
+   */
+  emergencyCompact(messages: Message[]): Message[] {
+    return truncateToolResults(messages, Math.floor(messages.length * 0.3));
   }
 }

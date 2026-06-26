@@ -1,10 +1,12 @@
 /**
  * 持久化存储：~/.cangjie + 项目级 .cangjie
+ *
+ * 配置优先级：命令行参数 > 环境变量 > 项目配置 > 用户全局配置 > 默认值
  */
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { Message } from '@cangjie/shared';
+import type { LlmProvider, Message } from '@cangjie/shared';
 
 // ============================================================
 // 路径
@@ -20,6 +22,10 @@ export function projectDir(workspace: string): string {
 
 export function memoryDir(workspace: string): string {
   return path.join(projectDir(workspace), 'memory');
+}
+
+export function projectConfigPath(workspace: string): string {
+  return path.join(projectDir(workspace), 'config.json');
 }
 
 export function ensureDir(dir: string): void {
@@ -108,12 +114,24 @@ export function loadProjectMemory(workspace: string): string {
 }
 
 // ============================================================
-// 用户配置
+// 用户配置（~/.cangjie/config.json）
 // ============================================================
 
 export interface UserConfig {
+  /** 默认模型 */
   model?: string;
+  /** 默认 provider */
+  provider?: LlmProvider | string;
+  /** 默认 API Key（不建议明文存，优先用环境变量） */
+  apiKey?: string;
+  /** OpenAI-compat base URL */
+  baseUrl?: string;
+  /** 是否自动批准所有操作 */
   autoYes?: boolean;
+  /** 默认最大步数 */
+  maxSteps?: number;
+  /** 上下文压缩策略 */
+  compactionStrategy?: 'truncate' | 'summarize';
 }
 
 export function loadUserConfig(): UserConfig {
@@ -127,4 +145,66 @@ export function loadUserConfig(): UserConfig {
 export function saveUserConfig(config: UserConfig): void {
   ensureDir(GLOBAL_DIR);
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8');
+}
+
+// ============================================================
+// 项目配置（.cangjie/config.json）
+// ============================================================
+
+export interface ProjectConfig {
+  /** 覆盖用户级 model */
+  model?: string;
+  /** 覆盖用户级 provider */
+  provider?: LlmProvider | string;
+  /** 项目特定 API Key */
+  apiKey?: string;
+  /** OpenAI-compat base URL */
+  baseUrl?: string;
+  /** 权限规则 */
+  permissions?: {
+    autoAllowReadOnly?: boolean;
+    rules?: Array<{ tool: string; pattern?: string; action: string }>;
+  };
+  /** 上下文配置 */
+  context?: {
+    maxHistoryTokens?: number;
+    compactionThreshold?: number;
+    compactionStrategy?: 'truncate' | 'summarize';
+  };
+  /** MCP 服务器配置（Phase 3 启用） */
+  mcp?: Record<string, unknown>;
+}
+
+export function loadProjectConfig(workspace: string): ProjectConfig {
+  try {
+    return JSON.parse(fs.readFileSync(projectConfigPath(workspace), 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * 合并用户配置 + 项目配置，项目配置覆盖用户配置。
+ */
+export function resolveConfig(
+  userConfig: UserConfig,
+  projectConfig: ProjectConfig,
+): {
+  model?: string;
+  provider?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  autoYes?: boolean;
+  maxSteps?: number;
+  compactionStrategy?: string;
+} {
+  return {
+    model: projectConfig.model ?? userConfig.model,
+    provider: projectConfig.provider ?? userConfig.provider,
+    apiKey: projectConfig.apiKey ?? userConfig.apiKey,
+    baseUrl: projectConfig.baseUrl ?? userConfig.baseUrl,
+    autoYes: userConfig.autoYes,
+    maxSteps: userConfig.maxSteps,
+    compactionStrategy: projectConfig.context?.compactionStrategy ?? userConfig.compactionStrategy,
+  };
 }

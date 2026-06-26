@@ -16,16 +16,35 @@ import {
   CangjieAgent,
   createLlmClient,
   listSessions,
+  loadProjectConfig,
   loadProjectMemory,
   loadSession,
+  loadUserConfig,
+  resolveConfig,
   saveSession,
   sessionId,
   ToolRegistry,
 } from '@cangjie/core';
-import type { AgentEvent, Message } from '@cangjie/shared';
+import type { AgentEvent, LlmProvider, Message } from '@cangjie/shared';
+
+// TUI (Ink) — 仅在交互模式 + TTY 时使用
+let InkApp: any = null;
+let InkRender: any = null;
+let TuiApp: any = null;
+async function loadTui() {
+  if (!TuiApp) {
+    const [ink, appMod] = await Promise.all([
+      import('ink'),
+      import('./tui/app.js'),
+    ]);
+    InkRender = ink.render;
+    TuiApp = appMod.App;
+  }
+  return { render: InkRender, App: TuiApp };
+}
 
 function printUsage(): void {
-  console.log(`Cangjie CLI v0.1.0
+  console.log(`Cangjie CLI v0.2.0
 
 用法:
   cj [选项] "<提示词>"
@@ -35,6 +54,8 @@ function printUsage(): void {
   --yes, -y         自动批准所有操作
   --workspace, -w   工作区目录（默认: 当前目录）
   --model, -m       模型名称
+  --provider, -p    LLM 提供商: anthropic | openai | openai-compat（默认: anthropic）
+  --base-url        OpenAI-compat 的 API 地址（如 http://localhost:11434）
   --list            列出最近 10 个会话
   --resume <id>     恢复指定会话
   --help, -h        显示帮助
@@ -45,6 +66,8 @@ function parseArgs(): {
   prompt: string;
   workspace: string;
   model: string;
+  provider: string;
+  baseUrl: string;
   yes: boolean;
   list: boolean;
   resume: string;
@@ -52,6 +75,8 @@ function parseArgs(): {
   const args = process.argv.slice(2);
   let workspace = process.cwd();
   let model = process.env.ANTHROPIC_MODEL || process.env.ANTHROPIC_DEFAULT_SONNET_MODEL || 'claude-sonnet-4-6';
+  let provider = 'anthropic';
+  let baseUrl = '';
   let yes = false;
   let list = false;
   let resume = '';
@@ -65,6 +90,10 @@ function parseArgs(): {
       workspace = args[++i] ?? workspace;
     } else if (a === '--model' || a === '-m') {
       model = args[++i] ?? model;
+    } else if (a === '--provider' || a === '-p') {
+      provider = args[++i] ?? provider;
+    } else if (a === '--base-url') {
+      baseUrl = args[++i] ?? '';
     } else if (a === '--list') {
       list = true;
     } else if (a === '--resume') {
@@ -82,7 +111,7 @@ function parseArgs(): {
     prompt = '';
   }
 
-  return { prompt, workspace, model, yes, list, resume };
+  return { prompt, workspace, model, provider, baseUrl, yes, list, resume };
 }
 
 // 权限确认（复用 REPL readline，避免 stdin 冲突）
@@ -120,6 +149,16 @@ function renderEvent(event: AgentEvent) {
     case 'response':
       process.stdout.write(`\n\x1b[32m${event.content}\x1b[0m\n`);
       break;
+    case 'plan':
+      process.stderr.write(`\n\x1b[35m📋 任务计划:\x1b[0m\n`);
+      for (const t of event.todos) {
+        const icon = t.status === 'completed' ? '✅' : t.status === 'in_progress' ? '🔄' : '⏳';
+        process.stderr.write(`  ${icon} ${t.content}\n`);
+      }
+      break;
+    case 'compact':
+      process.stderr.write(`\n\x1b[33m📦 上下文压缩: ${event.reason}\x1b[0m\n`);
+      break;
     case 'error':
       process.stderr.write(`\n\x1b[31m✗ ${event.error}\x1b[0m\n`);
       break;
@@ -132,15 +171,16 @@ function renderEvent(event: AgentEvent) {
 function createAgent(opts: {
   apiKey: string;
   model: string;
+  provider: string;
   baseUrl?: string;
   workspace: string;
   yes: boolean;
   sid: string;
   askRl?: readline.Interface;
 }) {
-  const { apiKey, model, baseUrl, workspace, yes, sid, askRl } = opts;
+  const { apiKey, model, provider, baseUrl, workspace, yes, sid, askRl } = opts;
 
-  const llm = createLlmClient({ provider: 'anthropic', apiKey, model, baseUrl });
+  const llm = createLlmClient({ provider: provider as LlmProvider, apiKey, model, baseUrl });
 
   const tools = new ToolRegistry();
 
@@ -149,7 +189,7 @@ function createAgent(opts: {
 
   const agent = new CangjieAgent(llm, tools, {
     config: {
-      llm: { provider: 'anthropic', apiKey, model, maxTokens: 8192 },
+      llm: { provider, apiKey, model, maxTokens: 8192 },
       permissions: { autoAllowReadOnly: true, rules: [] },
       context: { maxHistoryTokens: 100000, compactionThreshold: 0.85 },
     },
@@ -208,11 +248,63 @@ async function runAgentTurn(
 }
 
 // ============================================================
+// TUI 模式入口（Ink）
+// ============================================================
+
+async function startTui(opts: {
+  agent: CangjieAgent;
+  provider: string;
+  model: string;
+  workspace: string;
+  memoryPrompt: string;
+  sid: string;
+}) {
+  const { render, App } = await loadTui();
+  const { agent, provider, model, workspace, memoryPrompt, sid } = opts;
+
+  const { waitUntilExit } = render(
+    App({
+      agent,
+      provider,
+      model,
+      workspace,
+      memoryPrompt,
+      sessionId: sid,
+      onSaveSession: () => {
+        const msgs = agent.lastMessages;
+        if (!msgs.length) return;
+        saveSession({
+          meta: {
+            id: sid,
+            workspace,
+            model,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            messageCount: msgs.length,
+          },
+          messages: msgs,
+        });
+      },
+      onListSessions: () => {
+        const sessions = listSessions(5);
+        return sessions.map(
+          (s) =>
+            `${s.id}  ${new Date(s.updatedAt).toLocaleString('zh-CN')}  ${s.model}  ${s.messageCount}条`,
+        );
+      },
+      onLoadMemory: () => loadProjectMemory(workspace),
+    }),
+  );
+
+  await waitUntilExit;
+}
+
+// ============================================================
 // Main
 // ============================================================
 
 async function main() {
-  const { prompt: initialPrompt, workspace, model, yes, list, resume } = parseArgs();
+  const { prompt: initialPrompt, workspace, model, provider, baseUrl: cliBaseUrl, yes, list, resume } = parseArgs();
 
   // --list
   if (list) {
@@ -220,13 +312,30 @@ async function main() {
     return;
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
-  if (!apiKey) {
-    console.error('错误: 请设置 ANTHROPIC_API_KEY 或 ANTHROPIC_AUTH_TOKEN 环境变量');
-    process.exit(1);
+  // 加载配置（命令行 > 环境变量 > 项目配置 > 用户配置）
+  const userConfig = loadUserConfig();
+  const projectConfig = loadProjectConfig(workspace);
+  const resolved = resolveConfig(userConfig, projectConfig);
+
+  const finalProvider = provider || resolved.provider || 'anthropic';
+  const finalBaseUrl = cliBaseUrl || resolved.baseUrl || '';
+
+  // API Key: 按 provider 查不同环境变量
+  let apiKey = '';
+  if (finalProvider === 'anthropic') {
+    apiKey = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || resolved.apiKey || '';
+  } else if (finalProvider === 'openai') {
+    apiKey = process.env.OPENAI_API_KEY || resolved.apiKey || '';
+  } else {
+    // openai-compat: 尝试多个环境变量
+    apiKey = process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY || resolved.apiKey || 'not-needed';
   }
 
-  const baseUrl = process.env.ANTHROPIC_BASE_URL;
+  if (!apiKey) {
+    console.error(`错误: 请设置 ${finalProvider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'} 环境变量`);
+    console.error('或在 ~/.cangjie/config.json 中配置 apiKey');
+    process.exit(1);
+  }
 
   // 从 stdin 读入 prompt（管道模式）
   let prompt = initialPrompt;
@@ -237,9 +346,9 @@ async function main() {
     prompt = chunks.join('').trim();
   }
 
-  console.log(`\n\x1b[1mCangjie\x1b[0m \x1b[90mv0.1.0\x1b[0m`);
+  console.log(`\n\x1b[1mCangjie\x1b[0m \x1b[90mv0.2.0\x1b[0m`);
   console.log(`\x1b[90m工作区: ${workspace}\x1b[0m`);
-  console.log(`\x1b[90m模型: ${model}\x1b[0m`);
+  console.log(`\x1b[90mProvider: ${finalProvider}  模型: ${model}\x1b[0m`);
 
   // --resume
   let sid: string;
@@ -262,7 +371,16 @@ async function main() {
 
   // 一次性模式
   if (prompt) {
-    const { agent, memoryPrompt } = createAgent({ apiKey, model, baseUrl, workspace, yes, sid, askRl: undefined });
+    const { agent, memoryPrompt } = createAgent({
+      apiKey,
+      model,
+      provider: finalProvider,
+      baseUrl: finalBaseUrl,
+      workspace,
+      yes,
+      sid,
+      askRl: undefined,
+    });
     if (history?.length) {
       agent.lastMessages = [{ role: 'system', content: '' }, ...history];
     }
@@ -287,14 +405,52 @@ async function main() {
     return;
   }
 
-  // ---- 交互式 REPL 模式 ----
+  // ---- 交互模式：TUI（TTY）或 readline 降级 ----
+  const useTui = process.stdout.isTTY;
+
+  if (useTui) {
+    const { agent, memoryPrompt } = createAgent({
+      apiKey,
+      model,
+      provider: finalProvider,
+      baseUrl: finalBaseUrl,
+      workspace,
+      yes,
+      sid,
+      askRl: undefined,
+    });
+    if (history?.length) {
+      agent.lastMessages = [{ role: 'system', content: '' }, ...history];
+    }
+    console.log(`\nCangjie TUI v0.2.0 — 输入 /help 查看帮助\n`);
+    await startTui({
+      agent,
+      provider: finalProvider,
+      model,
+      workspace,
+      memoryPrompt: memoryPrompt || '',
+      sid,
+    });
+    return;
+  }
+
+  // ---- 纯文本 REPL 模式（管道/非 TTY） ----
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
     prompt: '\x1b[1mcj>\x1b[0m ',
   });
 
-  const { agent, memoryPrompt } = createAgent({ apiKey, model, baseUrl, workspace, yes, sid, askRl: rl });
+  const { agent, memoryPrompt } = createAgent({
+    apiKey,
+    model,
+    provider: finalProvider,
+    baseUrl: finalBaseUrl,
+    workspace,
+    yes,
+    sid,
+    askRl: rl,
+  });
   if (history?.length) {
     agent.lastMessages = [{ role: 'system', content: '' }, ...history];
   }
