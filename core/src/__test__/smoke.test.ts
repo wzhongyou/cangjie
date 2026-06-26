@@ -253,3 +253,65 @@ describe('Builtin Tools', () => {
     expect(result.error).toBe('invalid_args');
   });
 });
+
+describe('TaskState', () => {
+  it('状态机流转', async () => {
+    const { TaskState } = await import('../task-state.js');
+    const ts = new TaskState();
+    expect(ts.phase).toBe('planning');
+    
+    ts.updateTodos([{ id: '1', content: 'a', status: 'in_progress' }]);
+    expect(ts.phase).toBe('executing');
+    
+    ts.updateTodos([{ id: '1', content: 'a', status: 'completed' }]);
+    expect(ts.phase).toBe('done');
+    
+    expect(ts.summary().total).toBe(1);
+    expect(ts.summary().completed).toBe(1);
+  });
+
+  it('StepRecord 追踪', async () => {
+    const { TaskState } = await import('../task-state.js');
+    const ts = new TaskState();
+    ts.recordStep({ step: 0, type: 'tool_call', detail: 'grep pattern=test', toolName: 'grep' });
+    expect(ts.executionTrace).toHaveLength(1);
+    expect(ts.executionTrace[0].toolName).toBe('grep');
+  });
+});
+
+describe('Sandbox', () => {
+  it('阻止命令注入', async () => {
+    const { checkBashCommand } = await import('../sandbox.js');
+    expect(checkBashCommand('echo $(whoami)').allowed).toBe(false);
+    expect(checkBashCommand('echo `whoami`').allowed).toBe(false);
+    expect(checkBashCommand('eval "echo hi"').allowed).toBe(false);
+  });
+
+  it('允许安全命令', async () => {
+    const { checkBashCommand } = await import('../sandbox.js');
+    expect(checkBashCommand('npm test').allowed).toBe(true);
+    expect(checkBashCommand('ls -la').allowed).toBe(true);
+    expect(checkBashCommand('git status').allowed).toBe(true);
+  });
+
+  it('高危命令警告', async () => {
+    const { checkBashCommand } = await import('../sandbox.js');
+    const r = checkBashCommand('rm -rf /tmp/test');
+    expect(r.allowed).toBe(true);
+    // No / root match for /tmp/test
+  });
+});
+
+describe('MemoryManager', () => {
+  it('读取项目记忆', async () => {
+    const { loadProjectMemories } = await import('../memory-manager.js');
+    const memories = loadProjectMemories(process.cwd());
+    expect(Array.isArray(memories)).toBe(true);
+  });
+
+  it('读取用户记忆', async () => {
+    const { loadUserMemories } = await import('../memory-manager.js');
+    const memories = loadUserMemories();
+    expect(Array.isArray(memories)).toBe(true);
+  });
+});

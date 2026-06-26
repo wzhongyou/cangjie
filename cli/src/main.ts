@@ -29,7 +29,7 @@ import {
 import { hooks } from '@cangjie/core';
 import { discoverSkills } from '@cangjie/core';
 import { loadUserMemories, loadProjectMemories } from '@cangjie/core';
-import { createResilientClient } from '@cangjie/core';
+import { createResilientClient, McpClient } from '@cangjie/core';
 import type { AgentEvent, LlmProvider, Message } from '@cangjie/shared';
 
 // TUI (Ink) — 仅在交互模式 + TTY 时使用
@@ -173,7 +173,7 @@ function renderEvent(event: AgentEvent) {
   }
 }
 
-function createAgent(opts: {
+async function createAgent(opts: {
   apiKey: string;
   model: string;
   provider: string;
@@ -182,8 +182,9 @@ function createAgent(opts: {
   yes: boolean;
   sid: string;
   askRl?: readline.Interface;
+  projectConfig: any;
 }) {
-  const { apiKey, model, provider, baseUrl, workspace, yes, sid, askRl } = opts;
+  const { apiKey, model, provider, baseUrl, workspace, yes, sid, askRl, projectConfig } = opts;
 
   // Resilient client with retry + fallback
   const { client: llm } = createResilientClient(
@@ -195,6 +196,28 @@ function createAgent(opts: {
 
   // Load hooks from workspace
   hooks.loadFromWorkspace(workspace);
+
+  // Load MCP servers from project config
+  const mcpServers = projectConfig.mcp as Record<string, { command: string; args?: string[]; env?: Record<string, string> }> | undefined;
+  if (mcpServers) {
+    for (const [name, cfg] of Object.entries(mcpServers)) {
+      try {
+        const client = new McpClient(cfg);
+        await client.connect();
+        for (const def of client.tools) {
+          tools.register({
+            definition: def,
+            async execute(args: Record<string, unknown>) {
+              return { content: await client.callTool(def.name, args) };
+            },
+          });
+        }
+      } catch (err: any) {
+        process.stderr.write(`MCP ${name}: ${err.message}
+`);
+      }
+    }
+  }
 
   // Build rich system prompt with memory + skills
   const memoryContent = loadProjectMemory(workspace);
@@ -376,7 +399,23 @@ async function main() {
   let history: Message[] | undefined;
 
   if (resume) {
-    const data = loadSession(workspace, resume);
+    // Try JSON first, then SQLite
+    let data = loadSession(workspace, resume);
+    if (!data) {
+      // Try SQLite
+      try {
+        const { getSession, getMessages } = await import('@cangjie/core');
+        const row = getSession(resume);
+        if (row) {
+          const msgs = getMessages(resume);
+          data = {
+            meta: { id: row.id, workspace: row.workspace, model: row.model, createdAt: row.createdAt, updatedAt: row.updatedAt, messageCount: msgs.length },
+            messages: msgs,
+          };
+          console.log(`\x1b[90m从 SQLite 恢复会话 ${resume}\x1b[0m`);
+        }
+      } catch { /* SQLite not available */ }
+    }
     if (!data) {
       console.error(`会话不存在: ${resume}`);
       process.exit(1);
@@ -392,7 +431,7 @@ async function main() {
 
   // 一次性模式
   if (prompt) {
-    const { agent, memoryPrompt } = createAgent({
+    const { agent, memoryPrompt } = await createAgent({
       apiKey,
       model,
       provider: finalProvider,
@@ -401,6 +440,7 @@ async function main() {
       yes,
       sid,
       askRl: undefined,
+      projectConfig,
     });
     if (history?.length) {
       agent.lastMessages = [{ role: 'system', content: '' }, ...history];
@@ -430,7 +470,7 @@ async function main() {
   const useTui = process.stdout.isTTY;
 
   if (useTui) {
-    const { agent, memoryPrompt } = createAgent({
+    const { agent, memoryPrompt } = await createAgent({
       apiKey,
       model,
       provider: finalProvider,
@@ -439,6 +479,7 @@ async function main() {
       yes,
       sid,
       askRl: undefined,
+      projectConfig,
     });
     if (history?.length) {
       agent.lastMessages = [{ role: 'system', content: '' }, ...history];
@@ -462,7 +503,7 @@ async function main() {
     prompt: '\x1b[1mcj>\x1b[0m ',
   });
 
-  const { agent, memoryPrompt } = createAgent({
+  const { agent, memoryPrompt } = await createAgent({
     apiKey,
     model,
     provider: finalProvider,
@@ -471,6 +512,7 @@ async function main() {
     yes,
     sid,
     askRl: rl,
+    projectConfig,
   });
   if (history?.length) {
     agent.lastMessages = [{ role: 'system', content: '' }, ...history];

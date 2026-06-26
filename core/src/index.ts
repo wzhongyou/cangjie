@@ -22,6 +22,8 @@ export {
   appendMessage, getMessages, saveCheckpoint, getLastCheckpoint,
   recordDecision, updateStats, getStats,
 } from './session-store.js';
+export { McpClient } from './mcp-client.js';
+export type { McpServerConfig } from './mcp-client.js';
 export { discoverSkills } from './skills.js';
 export * from './storage.js';
 export type { TaskPhase, TodoItem, StepRecord } from './task-state.js';
