@@ -546,7 +546,7 @@ TodoWrite         →     todo_write           同
 4. **Grep > Embedding**（在 Agent 场景） — Agent 自己 grep 比预先 RAG 更准确（不会遗漏/过时）。
 
 ---
-## 4. 代码智能系统（RAG + 混合搜索）
+## 4. 代码理解策略
 
 ### 4.1 两种搜索范式
 
@@ -800,14 +800,14 @@ Input Buffer           Agent Loop           Output Buffer
 | 能力 | 状态 |
 |------|------|
 | 多 Provider 切换 (anthropic/openai/compat) | ✅ |
-| 重试（API 错误自动重试，指数退避） | 📋 Phase 3 |
-| 降级（主模型不可用自动切备用） | 📋 Phase 3 |
-| 限流（请求队列 + token 桶） | 📋 Phase 3 |
+| 重试（API 错误自动重试，指数退避） | 📋 Phase 5 |
+| 降级（主模型不可用自动切备用） | 📋 Phase 5 |
+| 限流（请求队列 + token 桶） | 📋 Phase 5 |
 | Usage 统计（会话级 token 累计） | 🟡 仅 StreamEvent 带 usage |
 
 ---
 
-## 6. 子 Agent 与多 Agent 编排 ⚠️ 设计稿，Phase 3 实现
+## 6. 子 Agent 与多 Agent 编排 ⚠️ 设计稿，Phase 4 实现
 
 ### 6.1 Claude Code 的子 Agent 教训
 
