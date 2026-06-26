@@ -26,6 +26,10 @@ import {
   sessionId,
   ToolRegistry,
 } from '@cangjie/core';
+import { hooks } from '@cangjie/core';
+import { discoverSkills } from '@cangjie/core';
+import { loadUserMemories, loadProjectMemories } from '@cangjie/core';
+import { createResilientClient } from '@cangjie/core';
 import type { AgentEvent, LlmProvider, Message } from '@cangjie/shared';
 
 // TUI (Ink) — 仅在交互模式 + TTY 时使用
@@ -181,12 +185,28 @@ function createAgent(opts: {
 }) {
   const { apiKey, model, provider, baseUrl, workspace, yes, sid, askRl } = opts;
 
-  const llm = createLlmClient({ provider: provider as LlmProvider, apiKey, model, baseUrl });
+  // Resilient client with retry + fallback
+  const { client: llm } = createResilientClient(
+    { provider: provider as LlmProvider, apiKey, model, baseUrl },
+    { maxRetries: 3, retryBaseMs: 1000 }
+  );
 
   const tools = new ToolRegistry();
 
+  // Load hooks from workspace
+  hooks.loadFromWorkspace(workspace);
+
+  // Build rich system prompt with memory + skills
   const memoryContent = loadProjectMemory(workspace);
-  const memoryPrompt = memoryContent ? `\n\n## Project Memory\n\n${memoryContent}` : '';
+  const userMemories = loadUserMemories();
+  const projectMemories = loadProjectMemories(workspace);
+  const skills = discoverSkills(workspace);
+  const parts: string[] = [];
+  if (memoryContent) parts.push('## Project Memory\\n\\n' + memoryContent);
+  if (userMemories.length) parts.push('## User Memory\\n\\n' + userMemories.map((m: any) => m.content.body).join('\\n\\n'));
+  if (projectMemories.length) parts.push('## Project Memory\\n\\n' + projectMemories.map((m: any) => m.content.body).join('\\n\\n'));
+  if (skills.length) parts.push('## Available Skills\\n\\n' + skills.map((s: any) => '- ' + s.name + ': ' + s.description).join('\\n'));
+  const memoryPrompt = parts.join('\\n\\n---\\n\\n');
 
   const agent = new CangjieAgent(llm, tools, {
     config: {
