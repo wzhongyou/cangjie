@@ -14,10 +14,8 @@
 | 子 Agent / MCP / Hooks / Skills | ✅ v0.2 |
 | Model 容错 / 沙箱 / Trace | ✅ v0.2 |
 | 存储按项目隔离 | ✅ v0.2 |
-| VSCode 插件同步 | ✅ v0.2 |
-| JetBrains 插件 ✅ 骨架就位骨架 | ✅ v0.2 |
 | 异步消息队列（h2A 双缓冲） | ⏸️ 远期 |
-| LSP 工具 / 代码索引 | ⏸️ 远期 |------|------|
+| LSP 工具 / 代码索引 | ⏸️ 远期 |
 | Agent Loop + 9 工具 + 多模型 | ✅ v0.2 |
 | 上下文压缩 (summarize+truncate) | ✅ v0.2 |
 | 权限流水线 + 执行确认 | ✅ v0.2 |

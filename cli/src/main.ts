@@ -15,33 +15,32 @@ import type { SessionData } from '@cangjie/core';
 import {
   CangjieAgent,
   createLlmClient,
+  createResilientClient,
+  discoverSkills,
+  hooks,
   listAllSessions,
   listSessions,
   loadProjectConfig,
+  loadProjectMemories,
   loadProjectMemory,
   loadSession,
   loadUserConfig,
+  loadUserMemories,
+  McpClient,
   resolveConfig,
   saveSession,
   sessionId,
   ToolRegistry,
 } from '@cangjie/core';
-import { hooks } from '@cangjie/core';
-import { discoverSkills } from '@cangjie/core';
-import { loadUserMemories, loadProjectMemories } from '@cangjie/core';
-import { createResilientClient, McpClient } from '@cangjie/core';
 import type { AgentEvent, LlmProvider, Message } from '@cangjie/shared';
 
 // TUI (Ink) — 仅在交互模式 + TTY 时使用
-let InkApp: any = null;
+const InkApp: any = null;
 let InkRender: any = null;
 let TuiApp: any = null;
 async function loadTui() {
   if (!TuiApp) {
-    const [ink, appMod] = await Promise.all([
-      import('ink'),
-      import('./tui/app.js'),
-    ]);
+    const [ink, appMod] = await Promise.all([import('ink'), import('./tui/app.js')]);
     InkRender = ink.render;
     TuiApp = appMod.App;
   }
@@ -189,7 +188,7 @@ async function createAgent(opts: {
   // Resilient client with retry + fallback
   const { client: llm } = createResilientClient(
     { provider: provider as LlmProvider, apiKey, model, baseUrl },
-    { maxRetries: 3, retryBaseMs: 1000 }
+    { maxRetries: 3, retryBaseMs: 1000 },
   );
 
   const tools = new ToolRegistry();
@@ -198,7 +197,9 @@ async function createAgent(opts: {
   hooks.loadFromWorkspace(workspace);
 
   // Load MCP servers from project config
-  const mcpServers = projectConfig.mcp as Record<string, { command: string; args?: string[]; env?: Record<string, string> }> | undefined;
+  const mcpServers = projectConfig.mcp as
+    | Record<string, { command: string; args?: string[]; env?: Record<string, string> }>
+    | undefined;
   if (mcpServers) {
     for (const [name, cfg] of Object.entries(mcpServers)) {
       try {
@@ -226,9 +227,12 @@ async function createAgent(opts: {
   const skills = discoverSkills(workspace);
   const parts: string[] = [];
   if (memoryContent) parts.push('## Project Memory\\n\\n' + memoryContent);
-  if (userMemories.length) parts.push('## User Memory\\n\\n' + userMemories.map((m: any) => m.content.body).join('\\n\\n'));
-  if (projectMemories.length) parts.push('## Project Memory\\n\\n' + projectMemories.map((m: any) => m.content.body).join('\\n\\n'));
-  if (skills.length) parts.push('## Available Skills\\n\\n' + skills.map((s: any) => '- ' + s.name + ': ' + s.description).join('\\n'));
+  if (userMemories.length)
+    parts.push('## User Memory\\n\\n' + userMemories.map((m: any) => m.content.body).join('\\n\\n'));
+  if (projectMemories.length)
+    parts.push('## Project Memory\\n\\n' + projectMemories.map((m: any) => m.content.body).join('\\n\\n'));
+  if (skills.length)
+    parts.push('## Available Skills\\n\\n' + skills.map((s: any) => '- ' + s.name + ': ' + s.description).join('\\n'));
   const memoryPrompt = parts.join('\\n\\n---\\n\\n');
 
   const agent = new CangjieAgent(llm, tools, {
@@ -332,8 +336,7 @@ async function startTui(opts: {
       onListSessions: () => {
         const sessions = listSessions(workspace, 5);
         return sessions.map(
-          (s) =>
-            `${s.id}  ${new Date(s.updatedAt).toLocaleString('zh-CN')}  ${s.model}  ${s.messageCount}条`,
+          (s) => `${s.id}  ${new Date(s.updatedAt).toLocaleString('zh-CN')}  ${s.model}  ${s.messageCount}条`,
         );
       },
       onLoadMemory: () => loadProjectMemory(workspace),
@@ -409,12 +412,21 @@ async function main() {
         if (row) {
           const msgs = getMessages(resume);
           data = {
-            meta: { id: row.id, workspace: row.workspace, model: row.model, createdAt: row.createdAt, updatedAt: row.updatedAt, messageCount: msgs.length },
+            meta: {
+              id: row.id,
+              workspace: row.workspace,
+              model: row.model,
+              createdAt: row.createdAt,
+              updatedAt: row.updatedAt,
+              messageCount: msgs.length,
+            },
             messages: msgs,
           };
           console.log(`\x1b[90m从 SQLite 恢复会话 ${resume}\x1b[0m`);
         }
-      } catch { /* SQLite not available */ }
+      } catch {
+        /* SQLite not available */
+      }
     }
     if (!data) {
       console.error(`会话不存在: ${resume}`);
@@ -470,30 +482,39 @@ async function main() {
   const useTui = process.stdout.isTTY;
 
   if (useTui) {
-    const { agent, memoryPrompt } = await createAgent({
-      apiKey,
-      model,
-      provider: finalProvider,
-      baseUrl: finalBaseUrl,
-      workspace,
-      yes,
-      sid,
-      askRl: undefined,
-      projectConfig,
-    });
-    if (history?.length) {
-      agent.lastMessages = [{ role: 'system', content: '' }, ...history];
+    try {
+      const { agent, memoryPrompt } = await createAgent({
+        apiKey,
+        model,
+        provider: finalProvider,
+        baseUrl: finalBaseUrl,
+        workspace,
+        yes,
+        sid,
+        askRl: undefined,
+        projectConfig,
+      });
+      if (history?.length) {
+        agent.lastMessages = [{ role: 'system', content: '' }, ...history];
+      }
+      console.log(`\nCangjie TUI v0.2.0 — 输入 /help 查看帮助\n`);
+      await startTui({
+        agent,
+        provider: finalProvider,
+        model,
+        workspace,
+        memoryPrompt: memoryPrompt || '',
+        sid,
+      });
+      return;
+    } catch (err: any) {
+      // Compiled binary may fail on React/Ink hooks. Fall through to REPL.
+      if (err?.message?.includes('resolveDispatcher') || err?.message?.includes('Invalid hook')) {
+        console.log('(TUI 不可用，使用 REPL 模式)\n');
+      } else {
+        throw err;
+      }
     }
-    console.log(`\nCangjie TUI v0.2.0 — 输入 /help 查看帮助\n`);
-    await startTui({
-      agent,
-      provider: finalProvider,
-      model,
-      workspace,
-      memoryPrompt: memoryPrompt || '',
-      sid,
-    });
-    return;
   }
 
   // ---- 纯文本 REPL 模式（管道/非 TTY） ----

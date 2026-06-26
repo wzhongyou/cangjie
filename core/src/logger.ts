@@ -25,19 +25,9 @@ export interface LogContext {
 }
 
 const root = pino({
-  level: process.env.CANGJIE_LOG_LEVEL || 'info',
-  transport:
-    process.env.NODE_ENV === 'production'
-      ? undefined // JSON to file
-      : {
-          target: 'pino-pretty',
-          options: {
-            colorize: true,
-            translateTime: 'HH:MM:ss',
-            ignore: 'pid,hostname,module',
-            messageFormat: '[{module}] {msg}',
-          },
-        },
+  level: process.env.CANGJIE_LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'warn' : 'info'),
+  // Plain JSON to stderr. Pipe through pino-pretty in dev if desired.
+  // Bun-compiled binary can't spawn pino-pretty as child process.
 });
 
 /** 创建模块级子 logger */

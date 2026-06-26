@@ -2,88 +2,84 @@
 
 > 仓颉造字，天雨粟，鬼夜哭。
 
-代码智能体 —— CLI 原生，VSCode 插件同步开发中。
+TypeScript 实现的 CLI 编码助手 —— Ink 终端 UI，本地运行，自主理解和修改代码。
 
 ---
 
 ## 快速开始
 
-### CLI（命令行）
+### 环境
 
-```bash
-# 1. 从源码编译二进制（需要 bun）
-pnpm build
-bun build cli/dist/main.js --compile --outfile cj
+- Node.js >= 22
+- pnpm >= 9
+- Bun >= 1.2（编译二进制用）
 
-# 2. 安装到 PATH
-sudo cp cj /usr/local/bin/
-
-# 3. 环境变量（写入 ~/.zshrc，注意加 export）
-export ANTHROPIC_API_KEY=sk-ant-...     # 或 ANTHROPIC_AUTH_TOKEN
-export ANTHROPIC_BASE_URL=...           # 可选，兼容 API 需要
-
-# 4. 使用
-cj "在项目里搜登录相关逻辑"             # 单次执行
-cj                                      # 交互式 REPL
-cj --yes "重构这个函数"                 # 跳过权限确认
-cj --list                               # 历史会话
-cj --resume <id>                        # 恢复会话
-```
-
-交互模式内置命令：
-
-```
-/help    帮助        /exit    退出
-/save    保存会话    /list    历史会话
-/memory  查看记忆    Ctrl+C   中断
-```
-
-### 数据存储
-
-```
-~/.cangjie/              # 全局
-  sessions/              # 对话自动保存
-  config.json
-
-.cangjie/memory/          # 项目级（Agent 自动读取）
-  tech-stack.md           # 例如：项目技术栈说明
-```
-
----
-
-## VSCode 插件（开发中）
-
-功能已实现，本地可跑，待发布市场：
+### 开发
 
 ```bash
 pnpm install
-# F5 → 新窗口 → Cmd+Shift+L 打开对话
+pnpm build          # 编译 shared / core / cli
+pnpm typecheck      # 类型检查
+pnpm lint           # Biome 代码检查
+pnpm test           # 运行测试
 ```
 
-- Chat 面板 + 流式输出
-- Diff Review（逐文件 Accept/Reject）
-- 权限确认弹窗
-- Cmd+K 行内编辑
+### 编译 CLI 二进制
 
----
+```bash
+# 两步编译：打包 → 编译（避免 React 重复打包）
+bun build cli/dist/main.js --outfile cli/dist/bundle.js --target bun
+bun build cli/dist/bundle.js --compile --outfile cj
+sudo cp cj /usr/local/bin/
+```
 
-## 当前能力
+### 使用
 
-| 能力 | CLI | 插件 |
-|------|:---:|:----:|
-| 自然语言对话 | ✅ | ✅ |
-| 读文件 / 搜索代码 (grep) | ✅ | ✅ |
-| 写文件 / Diff 编辑 | ✅ | ✅ |
-| 执行 Shell 命令 | ✅ | ✅ |
-| 流式输出 | ✅ | ✅ |
-| 多轮对话记忆 | ✅ | — |
-| 会话持久化 (`--resume`) | ✅ | — |
-| 项目 Memory (`.cangjie/`) | ✅ | — |
-| Diff Review 面板 | — | ✅ |
-| 权限弹窗确认 | — | ✅ |
-| Cmd+K 行内编辑 | — | ✅ |
+```bash
+# 配置 API key（按 provider 选择）
+cp .env.example .env
 
-工具：`read_file` `grep` `write_file` `edit_file` `bash`
+# Anthropic（默认）
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# OpenAI
+export OPENAI_API_KEY=sk-...
+
+# DeepSeek 等（OpenAI 兼容）
+export DEEPSEEK_API_KEY=sk-...
+cj --provider openai-compat --base-url https://api.deepseek.com/v1
+
+# 或写入 ~/.cangjie/config.json
+# { "provider": "openai-compat", "baseUrl": "https://api.deepseek.com/v1", "apiKey": "sk-..." }
+```
+
+```bash
+# 单次执行
+cj "在项目里搜索登录相关逻辑"
+
+# 交互模式
+cj
+
+# 跳过权限确认
+cj --yes "重构 user.ts"
+
+# 历史会话
+cj --list
+cj --resume <id>
+```
+
+> **交互模式**：`bun run cli/dist/main.js` 使用 Ink TUI。编译版 `./cj` 使用 readline REPL（React/Ink 在 Bun compile 下有兼容问题，自动降级）。
+
+交互模式内置命令：
+
+| 命令 | 说明 |
+|------|------|
+| `/help` | 帮助 |
+| `/save` | 保存会话 |
+| `/exit` | 退出 |
+| `/memory` | 查看记忆 |
+| `/list` | 历史会话 |
+| `Ctrl+C` | 中断当前操作 |
 
 ---
 
@@ -91,47 +87,45 @@ pnpm install
 
 ```
 cangjie/
-├── cli/          # @cangjie/cli   CLI 命令行
-├── plugin/       # VSCode 插件
-├── core/         # @cangjie/core  Agent 运行时
-├── shared/       # @cangjie/shared 共享类型
-├── docs/         # 设计文档
-└── .cangjie/     # 项目 memory
+├── cli/           CLI 命令行（Ink TUI）
+│   └── src/
+│       ├── main.ts        入口
+│       ├── commands/      内置命令（help/exit/save/list/memory/clear）
+│       └── tui/           Ink 终端 UI
+│           ├── app.tsx           主组件
+│           ├── components/       ChatView / DiffView / InputBox / StatusBar
+│           ├── hooks/            流式状态管理
+│           └── themes/           配色
+├── core/          Agent 运行时
+│   └── src/
+│       ├── agent-loop.ts  主循环（AsyncGenerator 流式）
+│       ├── tools/          10 个内置工具
+│       ├── llm/            多模型接入 + 容错（重试/降级/限流）
+│       ├── context/        上下文管理 + 压缩
+│       ├── permission/     权限管道
+│       ├── memory/         四层记忆系统
+│       └── session-store.ts SQLite 会话持久化
+├── shared/        共享类型
+└── docs/          设计文档
 ```
 
 ---
 
-## 开发
+## 当前能力
 
-```bash
-# 环境
-Node.js >= 22  |  pnpm >= 9
-
-# 构建 + 测试
-pnpm install
-pnpm build
-pnpm test
-
-# 编译 CLI 二进制（需要 bun）
-bun build cli/dist/main.js --compile --outfile cj
-
-# 代码检查
-pnpm lint          # Biome
-pnpm typecheck     # TypeScript
-```
-
----
-
-## 路线图
-
-| 阶段 | 状态 |
+| 能力 | |
 |------|------|
-| CLI 可用版 | ✅ v0.1 |
-| 会话 / Memory 持久化 | ✅ v0.1 |
-| Agent Loop + 5 工具 | ✅ v0.1 |
-| VSCode 插件 | ✅ 本地可用，待发布 |
-| 代码智能（LSP / 混合搜索） | 📋 |
-| MCP / Plugin 体系 | 📋 |
+| 自然语言对话 | 流式输出 |
+| 代码读写 | read / write / edit / grep / glob |
+| Shell 执行 | 命令注入检测 + 高危告警 |
+| Web 搜索 | DuckDuckGo 搜索 + 网页抓取 |
+| 子 Agent | explore / plan / verify / execute |
+| 多模型 | Anthropic / OpenAI / DeepSeek 等 |
+| 会话持久化 | SQLite + `--resume` |
+| 项目记忆 | `.cangjie/memory/` 目录自动读取 |
+| 权限控制 | 四级管道，不可绕过 |
+| MCP 协议 | 工具扩展 |
+| Skills / Hooks | 插件体系 |
 
 ---
 

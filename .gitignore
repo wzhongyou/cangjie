@@ -44,6 +44,9 @@ conf/llmgate.toml
 web/node_modules/
 web/dist/
 
+# Claude
+.claude/
+
 # Data
 data/
 .cangjie/

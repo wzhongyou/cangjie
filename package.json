@@ -30,5 +30,13 @@
     "*.{ts,json,md}": [
       "biome check --write --no-errors-on-unmatched"
     ]
-  }
+  },
+  "dependencies": {
+    "react-devtools-core": "^7.0.1"
+  },
+  "workspaces": [
+    "shared",
+    "core",
+    "cli"
+  ]
 }
