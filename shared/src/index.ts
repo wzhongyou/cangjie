@@ -9,6 +9,17 @@ export interface Message {
   content: string;
   toolCalls?: ToolCall[];
   toolCallId?: string;
+  /** 消息唯一标识（Phase 3 新增） */
+  id?: string;
+  /** 元数据：不进入 LLM 上下文（Phase 3 新增） */
+  metadata?: {
+    step?: number;
+    timestamp?: string;
+    tokenCount?: number;
+    compacted?: boolean;
+  };
+  /** 子 Agent 消息追溯（Phase 4） */
+  parentId?: string;
 }
 
 export interface ToolCall {

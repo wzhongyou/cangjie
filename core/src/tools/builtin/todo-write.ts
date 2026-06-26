@@ -1,13 +1,14 @@
 import type { Tool, ToolContext, ToolDefinition, ToolResult } from '@cangjie/shared';
+import { TaskState } from '../../task-state.js';
 
 /**
  * 任务规划工具 — Agent 用于追踪多步骤任务的进度。
  *
- * 对标 Claude Code TodoWrite / Codex update_plan / openCode todowrite。
- *
- * 状态存储在内存中（Agent 当前会话），不作为文件持久化。
- * 工具调用时传入完整 todos 列表替换旧列表。
+ * 状态存储在 TaskState 实例中，支持状态机流转和 StepRecord 追踪。
  */
+const taskState = new TaskState();
+
+export { taskState };
 const definition: ToolDefinition = {
   name: 'todo_write',
   description:
@@ -37,15 +38,12 @@ const definition: ToolDefinition = {
   },
 };
 
-/** 当前会话的 todos 状态（模块级，跟随进程生命周期） */
-let currentTodos: Array<{ id: string; content: string; status: string }> = [];
-
 export function getCurrentTodos() {
-  return currentTodos;
+  return taskState.todos;
 }
 
 export function clearTodos() {
-  currentTodos = [];
+  taskState.reset();
 }
 
 async function execute(args: Record<string, unknown>, _ctx: ToolContext): Promise<ToolResult> {
@@ -65,19 +63,16 @@ async function execute(args: Record<string, unknown>, _ctx: ToolContext): Promis
     }
   }
 
-  currentTodos = todos;
+  taskState.updateTodos(todos);
 
-  const statusCounts = {
-    pending: todos.filter((t) => t.status === 'pending').length,
-    in_progress: todos.filter((t) => t.status === 'in_progress').length,
-    completed: todos.filter((t) => t.status === 'completed').length,
-  };
+  const summary = taskState.summary();
 
   const lines = [
     `任务清单已更新（${todos.length} 项）：`,
-    `  ⏳ 待处理: ${statusCounts.pending}`,
-    `  🔄 进行中: ${statusCounts.in_progress}`,
-    `  ✅ 已完成: ${statusCounts.completed}`,
+    `  ⏳ 待处理: ${summary.pending}`,
+    `  🔄 进行中: ${summary.inProgress}`,
+    `  ✅ 已完成: ${summary.completed}`,
+    `  阶段: ${taskState.phase}`,
     '',
     ...todos.map((t) => {
       const icon = t.status === 'completed' ? '✅' : t.status === 'in_progress' ? '🔄' : '⏳';
