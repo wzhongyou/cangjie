@@ -13,8 +13,12 @@ import type { LlmProvider, Message } from '@cangjie/shared';
 // ============================================================
 
 export const GLOBAL_DIR = path.join(os.homedir(), '.cangjie');
-export const SESSIONS_DIR = path.join(GLOBAL_DIR, 'sessions');
+export const GLOBAL_SESSIONS_DIR = path.join(GLOBAL_DIR, 'sessions'); // 兼容旧数据
 export const CONFIG_PATH = path.join(GLOBAL_DIR, 'config.json');
+
+export function sessionsDir(workspace: string): string {
+  return path.join(projectDir(workspace), 'sessions');
+}
 
 export function projectDir(workspace: string): string {
   return path.join(workspace, '.cangjie');
@@ -56,32 +60,54 @@ export function sessionId(): string {
   return `${ts}-${rand}`;
 }
 
-export function sessionPath(id: string): string {
-  return path.join(SESSIONS_DIR, `${id}.json`);
+export function sessionPath(workspace: string, id: string): string {
+  return path.join(sessionsDir(workspace), `${id}.json`);
 }
 
 export function saveSession(session: SessionData): void {
-  ensureDir(SESSIONS_DIR);
-  fs.writeFileSync(sessionPath(session.meta.id), JSON.stringify(session, null, 2), 'utf-8');
+  ensureDir(sessionsDir(session.meta.workspace));
+  fs.writeFileSync(sessionPath(session.meta.workspace, session.meta.id), JSON.stringify(session, null, 2), 'utf-8');
 }
 
-export function loadSession(id: string): SessionData | null {
+// loadSession now requires workspace. For global search, use findSession.
+export function loadSession(workspace: string, id: string): SessionData | null {
   try {
-    const raw = fs.readFileSync(sessionPath(id), 'utf-8');
+    const raw = fs.readFileSync(sessionPath(workspace, id), 'utf-8');
     return JSON.parse(raw) as SessionData;
   } catch {
     return null;
   }
 }
 
-export function listSessions(limit = 10): SessionMeta[] {
+export function listAllSessions(limit = 10): SessionMeta[] {
+  return listSessionsFromGlobal(GLOBAL_SESSIONS_DIR, limit);
+}
+
+function listSessionsFromGlobal(dir: string, limit: number): SessionMeta[] {
   try {
-    ensureDir(SESSIONS_DIR);
-    const files = fs.readdirSync(SESSIONS_DIR).filter((f) => f.endsWith('.json'));
+    ensureDir(dir);
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
     const metas: SessionMeta[] = [];
     for (const f of files) {
       try {
-        const raw = fs.readFileSync(path.join(SESSIONS_DIR, f), 'utf-8');
+        const raw = fs.readFileSync(path.join(dir, f), 'utf-8');
+        const data = JSON.parse(raw) as SessionData;
+        metas.push(data.meta);
+      } catch { }
+    }
+    return metas.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, limit);
+  } catch { return []; }
+}
+
+export function listSessions(workspace: string, limit = 10): SessionMeta[] {
+  const dir = sessionsDir(workspace);
+  try {
+    ensureDir(dir);
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
+    const metas: SessionMeta[] = [];
+    for (const f of files) {
+      try {
+        const raw = fs.readFileSync(path.join(dir, f), 'utf-8');
         const data = JSON.parse(raw) as SessionData;
         metas.push(data.meta);
       } catch {

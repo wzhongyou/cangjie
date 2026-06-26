@@ -15,6 +15,7 @@ import type { SessionData } from '@cangjie/core';
 import {
   CangjieAgent,
   createLlmClient,
+  listAllSessions,
   listSessions,
   loadProjectConfig,
   loadProjectMemory,
@@ -217,7 +218,7 @@ function createAgent(opts: {
 // ============================================================
 
 async function handleList() {
-  const sessions = listSessions(10);
+  const sessions = listAllSessions(10);
   if (sessions.length === 0) {
     console.log('没有历史会话。');
     return;
@@ -286,7 +287,7 @@ async function startTui(opts: {
         });
       },
       onListSessions: () => {
-        const sessions = listSessions(5);
+        const sessions = listSessions(workspace, 5);
         return sessions.map(
           (s) =>
             `${s.id}  ${new Date(s.updatedAt).toLocaleString('zh-CN')}  ${s.model}  ${s.messageCount}条`,
@@ -355,7 +356,7 @@ async function main() {
   let history: Message[] | undefined;
 
   if (resume) {
-    const data = loadSession(resume);
+    const data = loadSession(workspace, resume);
     if (!data) {
       console.error(`会话不存在: ${resume}`);
       process.exit(1);
@@ -506,7 +507,7 @@ async function main() {
         return;
       }
       if (trimmed === '/list') {
-        const sessions = listSessions(5);
+        const sessions = listSessions(workspace, 5);
         if (sessions.length === 0) {
           console.log('没有历史会话。');
         } else {
