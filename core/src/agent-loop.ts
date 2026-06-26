@@ -11,6 +11,7 @@
 import type { AgentEvent, CangjieConfig, Message, StreamEvent, Tool } from '@cangjie/shared';
 import { ContextManager } from './context/manager.js';
 import type { LlmClient } from './llm/client.js';
+import { agentLog, llmLog, permLog, toolLog } from './logger.js';
 import { PermissionPipeline } from './permission/pipeline.js';
 import type { ToolRegistry } from './tools/registry.js';
 
@@ -68,6 +69,8 @@ export class CangjieAgent {
     }
     messages.push({ role: 'user', content: input.prompt });
 
+    agentLog.info({ sessionId: this.cfg.sessionId }, 'Agent run started');
+
     for (let step = 0; step < maxSteps; step++) {
       if (signal?.aborted) {
         yield { type: 'error', error: 'Aborted by user' };
@@ -75,9 +78,14 @@ export class CangjieAgent {
       }
 
       // 上下文压缩检查
+      const beforeCompact = messages.length;
       messages.length = this.contextManager.maybeCompact(messages);
+      if (messages.length < beforeCompact) {
+        agentLog.warn({ step, before: beforeCompact, after: messages.length }, 'Context compacted');
+      }
 
       // === LLM 流式调用 ===
+      const llmStart = Date.now();
       let textContent = '';
       const pendingToolCalls: Array<{
         id: string;
@@ -125,9 +133,12 @@ export class CangjieAgent {
           }
         }
       } catch (err: any) {
+        llmLog.error({ step, duration: Date.now() - llmStart, error: err.message }, 'LLM call failed');
         yield { type: 'error', error: `LLM 调用失败: ${err.message}` };
         break;
       }
+
+      llmLog.debug({ step, duration: Date.now() - llmStart, toolCalls: pendingToolCalls.length }, 'LLM call done');
 
       // Build assistant message
       const assistantMsg: Message = {
@@ -147,6 +158,7 @@ export class CangjieAgent {
       if (!pendingToolCalls.length) {
         yield { type: 'response', content: textContent };
         yield { type: 'done', steps: step + 1 };
+        agentLog.info({ steps: step + 1 }, 'Agent run completed');
         break;
       }
 
@@ -156,6 +168,7 @@ export class CangjieAgent {
           // 权限检查
           const decision = await this.permission.check(tc.name, tc.arguments);
           if (decision.action !== 'allow') {
+            permLog.warn({ tool: tc.name, action: decision.action, reason: decision.reason }, 'Permission denied');
             return {
               toolCallId: tc.id,
               toolName: tc.name,
@@ -168,6 +181,7 @@ export class CangjieAgent {
           // 执行工具
           const tool = this.tools.get(tc.name);
           const start = Date.now();
+          toolLog.debug({ tool: tc.name, args: JSON.stringify(tc.arguments).slice(0, 200) }, 'Tool executing');
           const result = tool
             ? await tool.execute(tc.arguments, {
                 workspaceRoot: this.cfg.workspaceRoot,
@@ -176,11 +190,18 @@ export class CangjieAgent {
               })
             : { content: `Tool not found: ${tc.name}`, error: 'not_found' };
 
+          const duration = Date.now() - start;
+          if (result.error) {
+            toolLog.warn({ tool: tc.name, duration, error: result.error }, 'Tool failed');
+          } else {
+            toolLog.debug({ tool: tc.name, duration }, 'Tool done');
+          }
+
           return {
             toolCallId: tc.id,
             toolName: tc.name,
             content: result.error ? `Error: ${result.content}` : result.content,
-            duration: Date.now() - start,
+            duration,
             isError: !!result.error,
           };
         }),
