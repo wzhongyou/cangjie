@@ -1,6 +1,6 @@
 {
   "name": "@cangjie/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Cangjie Agent Runtime — autonomous agent loop, tool system, context management",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,6 +1,6 @@
 {
   "name": "@cangjie/shared",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Cangjie shared types and utilities",
   "type": "module",
   "main": "./dist/index.js",

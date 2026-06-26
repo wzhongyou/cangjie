@@ -1,12 +1,12 @@
 {
   "name": "cangjie",
   "private": true,
-  "version": "0.1.0",
-  "description": "Cangjie — VSCode 代码智能体",
+  "version": "0.2.0",
+  "description": "Cangjie — TypeScript CLI 编码助手",
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm -r dev",
-    "typecheck": "tsc -b shared core cli ide/vscode",
+    "typecheck": "tsc -b shared core cli",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
