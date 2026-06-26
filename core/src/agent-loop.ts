@@ -13,6 +13,14 @@ import { ContextManager } from './context/manager.js';
 import type { LlmClient } from './llm/client.js';
 import { agentLog, llmLog, permLog, toolLog } from './logger.js';
 import { PermissionPipeline } from './permission/pipeline.js';
+import {
+  type SessionRow,
+  appendMessage,
+  createSession,
+  recordDecision,
+  saveCheckpoint,
+  updateStats,
+} from './session-store.js';
 import type { ToolRegistry } from './tools/registry.js';
 
 export interface AgentConfig {
@@ -70,6 +78,22 @@ export class CangjieAgent {
     messages.push({ role: 'user', content: input.prompt });
 
     agentLog.info({ sessionId: this.cfg.sessionId }, 'Agent run started');
+
+    // Ensure session row exists in SQLite
+    const now = new Date().toISOString();
+    try {
+      createSession({
+        id: this.cfg.sessionId,
+        workspace: this.cfg.workspaceRoot,
+        model: this.cfg.config.llm.model,
+        provider: this.cfg.config.llm.provider,
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+      });
+    } catch {
+      // Session already exists, update timestamp
+    }
 
     for (let step = 0; step < maxSteps; step++) {
       if (signal?.aborted) {
@@ -140,6 +164,14 @@ export class CangjieAgent {
 
       llmLog.debug({ step, duration: Date.now() - llmStart, toolCalls: pendingToolCalls.length }, 'LLM call done');
 
+      // Persist assistant message
+      try {
+        appendMessage(this.cfg.sessionId, step, { role: 'assistant', content: textContent });
+        updateStats(this.cfg.sessionId, 0, 0, Date.now() - llmStart);
+      } catch {
+        // non-fatal
+      }
+
       // Build assistant message
       const assistantMsg: Message = {
         role: 'assistant',
@@ -169,6 +201,7 @@ export class CangjieAgent {
           const decision = await this.permission.check(tc.name, tc.arguments);
           if (decision.action !== 'allow') {
             permLog.warn({ tool: tc.name, action: decision.action, reason: decision.reason }, 'Permission denied');
+            try { recordDecision(this.cfg.sessionId, step, tc.name, tc.arguments, decision.action, decision.reason); } catch { /* non-fatal */ }
             return {
               toolCallId: tc.id,
               toolName: tc.name,
@@ -177,6 +210,8 @@ export class CangjieAgent {
               isError: true,
             };
           }
+
+          try { recordDecision(this.cfg.sessionId, step, tc.name, tc.arguments, 'allow'); } catch { /* non-fatal */ }
 
           // 执行工具
           const tool = this.tools.get(tc.name);
@@ -220,6 +255,27 @@ export class CangjieAgent {
           content: tr.content,
           toolCallId: tr.toolCallId,
         });
+
+        // Persist tool message
+        try {
+          appendMessage(this.cfg.sessionId, step, {
+            role: 'tool',
+            content: tr.content,
+            toolCallId: tr.toolCallId,
+          });
+          updateStats(this.cfg.sessionId, 0, 0, 0, tr.toolName);
+        } catch {
+          /* non-fatal */
+        }
+      }
+
+      // Checkpoint every 10 steps
+      if (step > 0 && step % 10 === 0) {
+        try {
+          saveCheckpoint(this.cfg.sessionId, step, messages.length);
+        } catch {
+          /* non-fatal */
+        }
       }
 
       // 保存消息历史供多轮对话
